@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<?component name="input_criteri" macro-uri="comu/input_criteri.zul"?>
+<?component name="input_dada" macro-uri="comu/input_dada.zul"?>
+<?component name="input_password" macro-uri="comu/input_password.zul"?>
+<?component name="input_etiqueta" macro-uri="comu/input_etiqueta.zul"?>
+
+
+<grid width="99%">
+	<columns visible="false"><column width="14%"/><column/> </columns>
+	<rows>
+		<row>
+			<input_etiqueta value="Servei en cluster" />
+			<hbox width="90%">
+				<listbox bind="@param0" mold="select" disabled="{!canModifyAgent}" width="100px">
+					<listitem value="">
+						<listcell label=""/>
+					</listitem>
+					<listitem value="cluster">
+						<listcell label="Activat"/>
+					</listitem>
+					<listitem value="nocluster">
+						<listcell label="Desactivat"/>
+					</listitem>
+				</listbox>
+			</hbox>
+		</row>
+		<row>
+			<input_etiqueta value="Activar quota" />
+			<hbox width="90%">
+				<listbox bind="@param1" mold="select"  disabled="{!canModifyAgent}" width="100px">
+					<listitem value="">
+						<listcell label=""/>
+					</listitem>
+					<listitem value="quota">
+						<listcell label="Activat"/>
+					</listitem>
+					<listitem value="noquota">
+						<listcell label="Desactivat"/>
+					</listitem>
+				</listbox>
+			</hbox>
+		</row>		
+		<row>
+			<input_etiqueta value="Unitats" />
+			<hbox width="90%">
+				<input_dada bind="@param2" lectura="${!canModifyAgent}"
+					width_custom="98%" />
+				<label value="(només les lletres, sense :, i separades per espais)"/>
+			</hbox>
+		</row>
+	</rows>
+</grid>
