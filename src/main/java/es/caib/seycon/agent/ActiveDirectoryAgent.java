@@ -1651,7 +1651,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 						catch (LDAPException e)
 						{
 							cerrarConexion();
-							throw new InternalErrorException("Error creating host " + host
+							throw new InternalErrorException("Error creating role " + host
 									+ ":" + e.toString(), e);
 						}
 					}
