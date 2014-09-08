@@ -30,6 +30,12 @@
 		<enableAccessControl>N</enableAccessControl>
 	</agent>	
 	<agent>
+		<name>Remote Windows Host</name>
+		<javaClass>com.soffid.iam.sync.agent.RemoteWindowsAgent</javaClass>
+		<userInterface>RemoteWindowsAgent.zul</userInterface>
+		<enableAccessControl>N</enableAccessControl>
+	</agent>	
+	<agent>
 		<name>Windows Server</name>
 		<javaClass>es.caib.seycon.agent.WindowsNTAgent</javaClass>
 		<userInterface>WindowsAgent.zul</userInterface>
@@ -41,6 +47,7 @@
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
 		<enableAccessControl>false</enableAccessControl>
 		<enableAttributeMapping>true</enableAttributeMapping>
+		<authoritativeSource>true</authoritativeSource>
 
 		<object systemObject="user" soffidObject="user">
 
