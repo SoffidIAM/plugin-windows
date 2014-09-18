@@ -34,6 +34,7 @@ import com.novell.ldap.LDAPEntry;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
 import com.novell.ldap.LDAPModification;
+import com.novell.ldap.LDAPReferralException;
 import com.novell.ldap.LDAPSearchConstraints;
 import com.novell.ldap.LDAPSearchResults;
 import com.novell.ldap.controls.LDAPPagedResultsControl;
@@ -809,62 +810,55 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
+	private LDAPEntry findSamAccount(String user) throws LDAPException,
+			InternalErrorException {
+		LDAPEntry entry;
+		String searchFilter = "(&(objectClass=user)(sAMAccountName=" + user
+				+ "))";
+		LDAPSearchResults search = getConnection().search(baseDN,
+				LDAPConnection.SCOPE_SUB, searchFilter, null, false);
+		if (search.hasMore()) {
+			try {
+				entry = search.next();
+			} catch (LDAPReferralException ldapError) {
+				System.out.println("User " + user + "is not an AD user.");
+				entry = null;
+			}
+		} else {
+			entry = null;
+		}
+		return entry;
+	}
+
+	@Override
 	public boolean validateUserPassword (String user, Password password)
 			throws RemoteException, InternalErrorException
 	{
 		LDAPConnection conn = null;
 		try
 		{
-			Account acc = new Account();
-			acc.setName(user);
-			acc.setDescription(user);
-			acc.setDispatcher(getDispatcher().getCodi());
-			ExtensibleObjects entries;
-			try
-			{
-				Usuari usuari =
-						getServer().getUserInfo(user, getDispatcher().getCodi());
-				entries =
-						objectTranslator.generateObjects(new UserExtensibleObject(acc,
-								usuari, getServer()));
-			}
-			catch (UnknownUserException e)
-			{
-				entries =
-						objectTranslator.generateObjects(new AccountExtensibleObject(acc,
-								getServer()));
-			}
 
-			for (ExtensibleObject entry : entries.getObjects())
-			{
-				try
-				{
-					LDAPEntry ldapentry = searchSamAccount(entry, user);
-					if (ldapentry != null)
-					{
-						conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
-						conn.connect(ldapHost, ldapPort);
-						conn.bind(ldapVersion, ldapentry.getDN(), password.getPassword()
-								.getBytes("UTF8"));
-						conn.disconnect();
-						return true;
-					}
-				}
-				catch (LDAPException e)
-				{
-					log.info("Error connecting as user " + user + ":" + e.toString());
-				}
-			}
-			return false;
+			LDAPEntry entry;
+			entry = findSamAccount(user);
+			conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
+			conn.connect(ldapHost, ldapPort);
+			conn.bind(ldapVersion, entry.getDN(), password
+					.getPassword().getBytes("UTF8"));
+			conn.disconnect();
+			return true;
 		}
 		catch (UnsupportedEncodingException e)
 		{
 			return false;
 		}
-		finally
+		catch (LDAPException e)
 		{
+			log.info("Error connecting as user " + user + ":" + e.toString());
+			return false;
 		}
+		finally {}
 	}
+
 
 	public void configureMappings (Collection<ExtensibleObjectMapping> objects)
 			throws RemoteException, InternalErrorException

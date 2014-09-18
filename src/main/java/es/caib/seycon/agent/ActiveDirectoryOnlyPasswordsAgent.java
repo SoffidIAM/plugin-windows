@@ -162,7 +162,7 @@ public class ActiveDirectoryOnlyPasswordsAgent extends WindowsNTBDCAgent impleme
 		try
 		{
 
-      LDAPEntry entry;
+			LDAPEntry entry;
 			entry = findSamAccount(user);
 			conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
 			conn.connect(ldapHost, ldapPort);
