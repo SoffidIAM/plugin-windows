@@ -1225,6 +1225,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							{
 								if (rol.getDescripcio() == null)
 									rol.setDescripcio(entry.getAttribute("CN").getStringValue());
+								rol.setNom(roleName);
 
 								return rol;
 							}
