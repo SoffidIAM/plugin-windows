@@ -651,7 +651,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 				String dn = getDN(object);
 
-				if (!entry.getDN().equalsIgnoreCase(dn))
+				if (!entry.getDN().equalsIgnoreCase(dn) && ! entry.getDN().contains(",CN=Builtin,"))
 				{
 					int i = dn.indexOf(",");
 					if (i > 0)
