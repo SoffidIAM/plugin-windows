@@ -653,15 +653,25 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 				if (!entry.getDN().equalsIgnoreCase(dn) && ! entry.getDN().contains(",CN=Builtin,"))
 				{
-					int i = dn.indexOf(",");
-					if (i > 0)
+					// Check if must rename
+					boolean rename = true;
+					ExtensibleObjectMapping mapping = getMapping ( object.getObjectType());
+					if (mapping != null)
 					{
-						String parentName = dn.substring(i + 1);
-						createParents(parentName);
-						
-						entry = conn.read(entry.getDN());
-						conn.rename(entry.getDN(), dn.substring(0, i),
-								parentName, true);
+						rename = ! "false".equalsIgnoreCase(mapping.getProperties().get("rename"));
+					}
+					if (rename)
+					{
+						int i = dn.indexOf(",");
+						if (i > 0)
+						{
+							String parentName = dn.substring(i + 1);
+							createParents(parentName);
+							
+							entry = conn.read(entry.getDN());
+							conn.rename(entry.getDN(), dn.substring(0, i),
+									parentName, true);
+						}
 					}
 				}
 			}
@@ -674,6 +684,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		} finally {
 			pool.returnConnection();
 		}
+	}
+
+	private ExtensibleObjectMapping getMapping(String objectType) {
+		for (ExtensibleObjectMapping map: objectMappings)
+		{
+			if ( map.getSystemObject().equals(objectType))
+				return map;
+		}
+		return null;
 	}
 
 	public void removeObjects (String account, ExtensibleObjects objects)
