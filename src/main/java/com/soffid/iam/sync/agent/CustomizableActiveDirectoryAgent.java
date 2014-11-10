@@ -95,7 +95,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		KerberosAgent, AuthoritativeIdentitySource2
 {
 
-	static LDAPPool pool = new LDAPPool();
+	LDAPPool pool = null;
+	
+	static HashMap<String,LDAPPool> pools = new HashMap<String, LDAPPool>();
 	
 	private static final String SAM_ACCOUNT_NAME_ATTRIBUTE = "sAMAccountName";
 
@@ -221,6 +223,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		catch (Throwable e)
 		{
 //			e.printStackTrace();
+		}
+		pool = pools.get(getCodi());
+		if ( pool == null)
+		{
+			pool = new LDAPPool();
+			pools.put(getCodi(), pool);
 		}
 		pool.setBaseDN(baseDN);
 		pool.setLdapHost(ldapHost);
@@ -586,11 +594,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					createParents(parentName);
 				}
 				entry = new LDAPEntry(dn, attributeSet);
-				try {
-					pool.getConnection().add(entry);
-				} finally {
-					pool.returnConnection();
-				}
+				conn.add(entry);
 				if ((accountName != null)
 						&& ("user".equals(object.getObjectType()) || "account"
 								.equals(object.getObjectType())))
@@ -1760,14 +1764,24 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	{
 		try
 		{
-			String uid = "SEYCON_" + server;
-			if (uid.indexOf('.') > 0)
-				uid = uid.substring(0, uid.indexOf('.'));
-			if (uid.length() > 20)
-				uid = uid.substring(0, 20);
+			String uid;
+			String principal;
+			if (server.contains("/"))
+			{
+				principal = server;
+				uid = server.replace('/', '_');
+			}
+			else
+			{
+				uid = "SEYCON_" + server;
+				if (uid.indexOf('.') > 0)
+					uid = uid.substring(0, uid.indexOf('.'));
+				if (uid.length() > 20)
+					uid = uid.substring(0, 20);
+				principal = "SEYCON/" + server;
+			}
 
 			String realm = getRealmName();
-			String principal = "SEYCON/" + server;
 			KerberosPrincipalInfo result = new KerberosPrincipalInfo();
 			result.setUserName(uid);
 			result.setPrincipalName(principal + "@" + realm);

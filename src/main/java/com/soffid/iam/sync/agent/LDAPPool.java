@@ -21,6 +21,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	private int ldapPort;
 	private int ldapVersion;
 	private String baseDN;
+	private String ldapHosts[];
 	
 	public String getLdapHost() {
 		return ldapHost;
@@ -30,6 +31,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		if (this.ldapHost == null || ! this.ldapHost.equals(ldapHost))
 		{
 			this.ldapHost = ldapHost;
+			ldapHosts = ldapHost.split("[, ]+");
 			reconfigure();
 		}
 	}
@@ -96,6 +98,24 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	@Override
 	protected LDAPConnection createConnection() throws Exception {
+		Exception lastException = null;
+		for (String host: ldapHosts)
+		{
+			try {
+				return createConnection(host);
+			} catch (Exception e) {
+				lastException = e;
+			}
+		}
+		
+		if (lastException == null)
+			throw new InternalErrorException ("No host configured");
+		else
+			throw lastException;
+		
+	}
+
+	protected LDAPConnection createConnection(String host) throws Exception {
 		LDAPConnection conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
 
 		try 
@@ -119,7 +139,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 				}
 			});
 			conn.setConstraints(constraints);
-			conn.connect(ldapHost, ldapPort);
+			conn.connect(host, ldapPort);
 			conn.bind(ldapVersion, loginDN + ", " + baseDN, password.getPassword()
 					.getBytes("UTF8"));
 		}
@@ -130,7 +150,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		}
 		catch (LDAPException e)
 		{
-			throw new InternalErrorException("Failed to connect to LDAP: ("
+			throw new InternalErrorException("Failed to connect to LDAP server "+host+": ("
 					+ loginDN + "/" + password.getPassword() + ")" + e.toString(), e);
 		}
 		return (conn);
