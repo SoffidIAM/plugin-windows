@@ -58,6 +58,7 @@ import es.caib.seycon.ng.exception.UnknownGroupException;
 import es.caib.seycon.ng.exception.UnknownRoleException;
 import es.caib.seycon.ng.exception.UnknownUserException;
 import es.caib.seycon.ng.sync.engine.extobj.AccountExtensibleObject;
+import es.caib.seycon.ng.sync.engine.extobj.ExtensibleObjectFinder;
 import es.caib.seycon.ng.sync.engine.extobj.GroupExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.ObjectTranslator;
 import es.caib.seycon.ng.sync.engine.extobj.RoleExtensibleObject;
@@ -303,8 +304,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						catch (Exception e2)
 						{
 							String msg = "UpdateUserPassword('" + accountName + "')";
-							log.warn(msg, e);
-							throw new InternalErrorException(msg + e.getMessage(), e);
+							log.warn(msg+"(First attempt)", e);
+							log.warn(msg+"(Second attempt)", e2);
+							throw new InternalErrorException(msg + e2.getMessage(), e2);
 						}
 					}
 					else
@@ -389,7 +391,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		String base = baseDN;
 		String objectClass = vom.toSingleString(object.getAttribute("objectClass"));
 		String queryString =
-				"(&(objectClass=" + objectClass + ")(sAMAccountName=" + samAccount
+				"(&(objectClass=" + objectClass + ")(sAMAccountName=" + escapeLDAPSearchFilter(samAccount)
 						+ "))";
 		if (debugEnabled)
 			log.info("Looking for objects: LDAP QUERY=" + queryString.toString()
@@ -570,7 +572,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				{
 					String values[] = toStringArray(object.getAttribute(attribute));
 					if (values != null && !"dn".equals(attribute)
-							&& !"baseDn".equals(attribute))
+							&& !"baseDn".equals(attribute)
+							&& !SAM_ACCOUNT_NAME_ATTRIBUTE.equals(attribute))
 					{
 						attributeSet.add(new LDAPAttribute(attribute, values));
 					}
@@ -618,7 +621,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				for (String attribute : object.getAttributes())
 				{
 					if (!"dn".equals(attribute) && !"objectClass".equals(attribute)
-							&& !"baseDn".equals(attribute))
+							&& !"baseDn".equals(attribute) && !SAM_ACCOUNT_NAME_ATTRIBUTE.equals(attribute))
 					{
 						String[] value = toStringArray(object.getAttribute(attribute));
 						if (value == null && entry.getAttribute(attribute) != null)
@@ -788,7 +791,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	private LDAPEntry findSamAccount(String user) throws Exception {
 		LDAPEntry entry;
-		String searchFilter = "(&(objectClass=user)(sAMAccountName=" + user
+		String searchFilter = "(&(objectClass=user)(sAMAccountName=" + escapeLDAPSearchFilter(user)
 				+ "))";
 		LDAPConnection conn = pool.getConnection();
 		try
@@ -847,8 +850,43 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throws RemoteException, InternalErrorException
 	{
 		this.objectMappings = objects;
+//		for (ExtensibleObjectMapping m: objectMappings)
+//		{
+//			if (SoffidObjectType.OBJECT_ACCOUNT.equals(m.getSoffidObject()) ||
+//					SoffidObjectType.OBJECT_USER.equals(m.getSoffidObject()))
+//			{
+//				AttributeMapping am = new AttributeMapping("accountName", SAM_ACCOUNT_NAME_ATTRIBUTE, AttributeDirection.OUTPUT, m.getId());
+//				m.getAttributes().add(am);
+//			}
+//			if (SoffidObjectType.OBJECT_GROUP.equals(m.getSoffidObject()))
+//			{
+//				AttributeMapping am = new AttributeMapping("name", SAM_ACCOUNT_NAME_ATTRIBUTE, AttributeDirection.OUTPUT, m.getId());
+//				m.getAttributes().add(am);
+//			}
+//			if (SoffidObjectType.OBJECT_ROLE.equals(m.getSoffidObject()))
+//			{
+//				AttributeMapping am = new AttributeMapping("name", SAM_ACCOUNT_NAME_ATTRIBUTE, AttributeDirection.OUTPUT, m.getId());
+//				m.getAttributes().add(am);
+//			}
+//		}
 		objectTranslator =
 				new ObjectTranslator(getDispatcher(), getServer(), objectMappings);
+		objectTranslator.setObjectFinder(new ExtensibleObjectFinder() {
+			
+			public ExtensibleObject find(ExtensibleObject pattern) throws Exception {
+				String samAccount = (String) pattern.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE);
+				LDAPEntry entry = searchSamAccount(pattern, samAccount);
+				if (entry != null)
+				{
+					for (ObjectMapping m: objectMappings)
+					{
+						if (m.getSystemObject().equals(pattern.getObjectType()))
+							return parseEntry(entry, m);
+					}
+				}
+				return null;
+			}
+		});
 	}
 
 	AttributeMapping findAttribute (ExtensibleObjectMapping objectMapping,
@@ -923,7 +961,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							{
 								LDAPEntry entry = search.next();
 	
-								accounts.add(entry.getAttribute("sAMAccountName")
+								accounts.add(entry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE)
 										.getStringValue());
 							}
 	
@@ -1123,7 +1161,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								vom.toSingleString(dummySystemObject.getAttribute(att));
 						if ((value != null) && !"dn".equals(att) && !"baseDn".equals(att))
 						{
-							sb.append("(").append(att).append("=").append(value).append(")");
+							sb.append("(").append(att).append("=").append(escapeLDAPSearchFilter(value)).append(")");
 							any = true;
 						}
 					}
@@ -1153,7 +1191,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							{
 								LDAPEntry entry = search.next();
 	
-								roles.add(entry.getAttribute("sAMAccountName").getStringValue());
+								roles.add(entry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE).getStringValue());
 							}
 	
 							LDAPControl responseControls[] = search.getResponseControls();
@@ -1399,7 +1437,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			// Remove 'lockout'
 			status = status & (~ADS_UF_LOCKOUT);
 			// Remove flag to never password expires
-			status = status & (~ADS_UF_DONT_EXPIRE_PASSWD);
+			// status = status & (~ADS_UF_DONT_EXPIRE_PASSWD);
 			// Enable normal account status
 			status = status | ADS_UF_NORMAL_ACCOUNT;
 
@@ -1444,7 +1482,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			String groupCN =
 					groupEntry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE).getStringValue();
 			log.info("User {} belongs to [{}]", userName, groupCN);
-			h_soffidGroups.put(groupCN, groupEntry.getDN());
+			h_soffidGroups.put(groupCN.toLowerCase(), groupEntry.getDN());
 		}
 
 		// roles seycon: rolesUsuario - grupos seycon: grupsUsuari
@@ -1465,11 +1503,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		{
 			String groupCode = it.next();
 			log.info("User {} should belong to [{}]", userName, groupCode);
-			if (!h_soffidGroups.containsKey(groupCode))
+			if (!h_soffidGroups.containsKey(groupCode.toLowerCase()))
 				addGroupMember(groupCode, userName, userEntry);
 
 			else
-				h_soffidGroups.remove(groupCode);
+				h_soffidGroups.remove(groupCode.toLowerCase());
 		}
 		// Esborram dels grups excedents
 		for (Iterator it = h_soffidGroups.entrySet().iterator(); it.hasNext();)
@@ -1555,7 +1593,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			LDAPModification ldapModification =
 					new LDAPModification(LDAPModification.ADD, new LDAPAttribute(
 							"member", userEntry.getDN()));
-			debugModifications("Removing group member ", groupEntry.getDN(),
+			debugModifications("Adding group member ", groupEntry.getDN(),
 					new LDAPModification[] { ldapModification });
 			lc.modify(groupEntry.getDN(), ldapModification);
 			log.info("Added", null, null);
@@ -1958,14 +1996,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					{
 						if (value != null)
 						{
-							sb.append("(").append(att).append("=").append(value).append(")");
+							sb.append("(").append(att).append("=").append(escapeLDAPSearchFilter(value)).append(")");
 							any = true;
 						}
 					}
 				}
 
 				if (nextChange != null)
-					sb.append("(uSNChanged>=").append(nextChange).append(")");
+					sb.append("(uSNChanged>=").append(escapeLDAPSearchFilter(nextChange)).append(")");
 				sb.append(")");
 
 				if (debugEnabled)
@@ -2308,4 +2346,73 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		return rolesList;
 	}
 
+	public static String escapeDN(String name) {
+		StringBuffer sb = new StringBuffer(); // If using JDK >= 1.5 consider
+												// using StringBuilder
+		if ((name.length() > 0)
+				&& ((name.charAt(0) == ' ') || (name.charAt(0) == '#'))) {
+			sb.append('\\'); // add the leading backslash if needed
+		}
+		for (int i = 0; i < name.length(); i++) {
+			char curChar = name.charAt(i);
+			switch (curChar) {
+			case '\\':
+				sb.append("\\\\");
+				break;
+			case ',':
+				sb.append("\\,");
+				break;
+			case '+':
+				sb.append("\\+");
+				break;
+			case '"':
+				sb.append("\\\"");
+				break;
+			case '<':
+				sb.append("\\<");
+				break;
+			case '>':
+				sb.append("\\>");
+				break;
+			case ';':
+				sb.append("\\;");
+				break;
+			default:
+				sb.append(curChar);
+			}
+		}
+		if ((name.length() > 1) && (name.charAt(name.length() - 1) == ' ')) {
+			sb.insert(sb.length() - 1, '\\'); // add the trailing backslash if
+												// needed
+		}
+		return sb.toString();
+	}
+
+	public static final String escapeLDAPSearchFilter(String filter) {
+		StringBuffer sb = new StringBuffer(); // If using JDK >= 1.5 consider
+												// using StringBuilder
+		for (int i = 0; i < filter.length(); i++) {
+			char curChar = filter.charAt(i);
+			switch (curChar) {
+			case '\\':
+				sb.append("\\5c");
+				break;
+			case '*':
+				sb.append("\\2a");
+				break;
+			case '(':
+				sb.append("\\28");
+				break;
+			case ')':
+				sb.append("\\29");
+				break;
+			case '\u0000':
+				sb.append("\\00");
+				break;
+			default:
+				sb.append(curChar);
+			}
+		}
+		return sb.toString();
+	}
 }

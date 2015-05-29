@@ -649,7 +649,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 			synchronized (lc)
 			{
 				String searchFilter =
-						"(&(objectclass=user)(sAMAccountName=" + user + "))";
+						"(&(objectclass=user)(sAMAccountName=" + escapeLDAPSearchFilter(user) + "))";
 				int searchScope = LDAPConnection.SCOPE_SUB;
 				LDAPSearchResults searchResults =
 						lc.search(baseDN, searchScope, searchFilter, null, // return
@@ -1251,7 +1251,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 			LDAPConnection lc = getConnection();
 			synchronized (lc)
 			{
-				String searchFilter = "(&(objectClass=group)(sAMAccountName=" + group + "))";
+				String searchFilter = "(&(objectClass=group)(sAMAccountName=" + escapeLDAPSearchFilter(group) + "))";
 				int searchScope = LDAPConnection.SCOPE_SUB;
 				LDAPSearchResults searchResults =
 						lc.search(baseDN, searchScope, searchFilter, null, // return
@@ -1297,7 +1297,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 			{
 				LDAPEntry entry = new LDAPEntry();
 				String searchBase = "CN=Users, " + baseDN;
-				String searchFilter = "(&(objectClass=group)(cn=" + group + "))";
+				String searchFilter = "(&(objectClass=group)(cn=" + escapeLDAPSearchFilter(group) + "))";
 				int searchScope = LDAPConnection.SCOPE_ONE;
 				LDAPSearchResults searchResults =
 						lc.search(searchBase, searchScope, searchFilter,
@@ -1467,7 +1467,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 	{
 		int id = -1;
 		String searchBase = baseDN;
-		String searchFilter = "(&(objectClass=group)(sAMAccountName=" + group + "))";
+		String searchFilter = "(&(objectClass=group)(sAMAccountName=" + escapeLDAPSearchFilter(group) + "))";
 		LDAPSearchResults searchResults =
 				c.search(searchBase, LDAPConnection.SCOPE_ONE, searchFilter, null, // return
 																																						// all
@@ -1771,7 +1771,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 			{
 				LDAPEntry entry = new LDAPEntry();
 				String searchBase = "OU=Domain Controllers, " + baseDN;
-				String searchFilter = "(&(objectClass=computer)(cn=" + host + "))";
+				String searchFilter = "(&(objectClass=computer)(cn=" + escapeLDAPSearchFilter(host) + "))";
 				int searchScope = LDAPConnection.SCOPE_ONE;
 				LDAPSearchResults searchResults =
 						lc.search(searchBase, searchScope, searchFilter, null, // return all
@@ -1853,7 +1853,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 			{
 				LDAPEntry entry = new LDAPEntry();
 				String searchBase = "CN=Computers, " + baseDN;
-				String searchFilter = "(&(objectClass=group)(cn=" + group + "))";
+				String searchFilter = "(&(objectClass=group)(cn=" + escapeLDAPSearchFilter(group) + "))";
 				int searchScope = LDAPConnection.SCOPE_ONE;
 				LDAPSearchResults searchResults =
 						lc.search(searchBase, searchScope, searchFilter, null, // return all
@@ -2724,5 +2724,75 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 		}
 
 		return rolesList;
+	}
+
+	public static String escapeDN(String name) {
+		StringBuffer sb = new StringBuffer(); // If using JDK >= 1.5 consider
+												// using StringBuilder
+		if ((name.length() > 0)
+				&& ((name.charAt(0) == ' ') || (name.charAt(0) == '#'))) {
+			sb.append('\\'); // add the leading backslash if needed
+		}
+		for (int i = 0; i < name.length(); i++) {
+			char curChar = name.charAt(i);
+			switch (curChar) {
+			case '\\':
+				sb.append("\\\\");
+				break;
+			case ',':
+				sb.append("\\,");
+				break;
+			case '+':
+				sb.append("\\+");
+				break;
+			case '"':
+				sb.append("\\\"");
+				break;
+			case '<':
+				sb.append("\\<");
+				break;
+			case '>':
+				sb.append("\\>");
+				break;
+			case ';':
+				sb.append("\\;");
+				break;
+			default:
+				sb.append(curChar);
+			}
+		}
+		if ((name.length() > 1) && (name.charAt(name.length() - 1) == ' ')) {
+			sb.insert(sb.length() - 1, '\\'); // add the trailing backslash if
+												// needed
+		}
+		return sb.toString();
+	}
+
+	public static final String escapeLDAPSearchFilter(String filter) {
+		StringBuffer sb = new StringBuffer(); // If using JDK >= 1.5 consider
+												// using StringBuilder
+		for (int i = 0; i < filter.length(); i++) {
+			char curChar = filter.charAt(i);
+			switch (curChar) {
+			case '\\':
+				sb.append("\\5c");
+				break;
+			case '*':
+				sb.append("\\2a");
+				break;
+			case '(':
+				sb.append("\\28");
+				break;
+			case ')':
+				sb.append("\\29");
+				break;
+			case '\u0000':
+				sb.append("\\00");
+				break;
+			default:
+				sb.append(curChar);
+			}
+		}
+		return sb.toString();
 	}
 }
