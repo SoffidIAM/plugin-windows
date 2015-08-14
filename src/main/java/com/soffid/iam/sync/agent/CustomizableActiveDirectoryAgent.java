@@ -1,7 +1,5 @@
 package com.soffid.iam.sync.agent;
 
-import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
@@ -13,21 +11,15 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPAttributeSet;
-import com.novell.ldap.LDAPAuthHandler;
-import com.novell.ldap.LDAPAuthProvider;
 import com.novell.ldap.LDAPConnection;
-import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPControl;
 import com.novell.ldap.LDAPDN;
 import com.novell.ldap.LDAPEntry;
@@ -40,7 +32,6 @@ import com.novell.ldap.LDAPSearchResults;
 import com.novell.ldap.controls.LDAPPagedResultsControl;
 import com.novell.ldap.controls.LDAPPagedResultsResponse;
 import com.soffid.iam.api.Group;
-import com.soffid.iam.api.RoleGrant;
 
 import es.caib.seycon.agent.WindowsNTBDCAgent;
 import es.caib.seycon.ng.comu.Account;
@@ -57,6 +48,7 @@ import es.caib.seycon.ng.exception.InternalErrorException;
 import es.caib.seycon.ng.exception.UnknownGroupException;
 import es.caib.seycon.ng.exception.UnknownRoleException;
 import es.caib.seycon.ng.exception.UnknownUserException;
+import es.caib.seycon.ng.sync.engine.Watchdog;
 import es.caib.seycon.ng.sync.engine.extobj.AccountExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.ExtensibleObjectFinder;
 import es.caib.seycon.ng.sync.engine.extobj.GroupExtensibleObject;
@@ -74,13 +66,11 @@ import es.caib.seycon.ng.sync.intf.ExtensibleObjects;
 import es.caib.seycon.ng.sync.intf.GroupMgr;
 import es.caib.seycon.ng.sync.intf.KerberosAgent;
 import es.caib.seycon.ng.sync.intf.KerberosPrincipalInfo;
-import es.caib.seycon.ng.sync.intf.ReconcileMgr;
 import es.caib.seycon.ng.sync.intf.ReconcileMgr2;
 import es.caib.seycon.ng.sync.intf.RoleMgr;
 import es.caib.seycon.ng.sync.intf.UserMgr;
 import es.caib.seycon.util.Base64;
 import es.caib.seycon.util.TimedOutException;
-import es.caib.seycon.util.TimedProcess;
 
 /**
  * Agente que gestiona los usuarios y contraseñas del LDAP Hace uso de las
@@ -237,6 +227,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		pool.setLdapVersion(ldapVersion);
 		pool.setLoginDN(loginDN);
 		pool.setPassword(password);
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
+		try {
+			pool.getConnection();
+		} catch (Exception e) {
+			throw new InternalErrorException("Cannot connect to active directory", e);
+		} finally {
+			Watchdog.instance().dontDisturb();
+			pool.returnConnection();
+		}
 	}
 
 	/**
@@ -596,6 +595,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					String parentName = dn.substring(i + 1);
 					createParents(parentName);
 				}
+				debugModifications("Adding user", dn, attributeSet);
 				entry = new LDAPEntry(dn, attributeSet);
 				conn.add(entry);
 				if ((accountName != null)
@@ -820,29 +820,35 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public boolean validateUserPassword (String user, Password password)
 			throws RemoteException, InternalErrorException
 	{
+		String[] ldapHosts = ldapHost.split("[, ]+");
 		LDAPConnection conn = null;
-		try
+		for (String host: ldapHosts)
 		{
-
-			LDAPEntry entry;
-			entry = findSamAccount(user);
-			conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
-			conn.connect(ldapHost, ldapPort);
-			conn.bind(ldapVersion, entry.getDN(), password
-					.getPassword().getBytes("UTF8"));
-			conn.disconnect();
-			return true;
+			Watchdog.instance().interruptMe(getDispatcher().getTimeout());
+			try
+			{
+	
+				LDAPEntry entry;
+				entry = findSamAccount(user);
+				conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
+				conn.connect(host, ldapPort);
+				conn.bind(ldapVersion, entry.getDN(), password
+						.getPassword().getBytes("UTF8"));
+				conn.disconnect();
+				return true;
+			}
+			catch (UnsupportedEncodingException e)
+			{
+			}
+			catch (Exception e)
+			{
+				log.info("Error connecting to "+host+" as user " + user , e);
+			}
+			finally {
+				Watchdog.instance().dontDisturb();
+			}
 		}
-		catch (UnsupportedEncodingException e)
-		{
-			return false;
-		}
-		catch (Exception e)
-		{
-			log.info("Error connecting as user " + user + ":" + e.toString());
-			return false;
-		}
-		finally {}
+		return false;
 	}
 
 
@@ -875,16 +881,21 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			
 			public ExtensibleObject find(ExtensibleObject pattern) throws Exception {
 				String samAccount = (String) pattern.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE);
-				LDAPEntry entry = searchSamAccount(pattern, samAccount);
-				if (entry != null)
-				{
-					for (ObjectMapping m: objectMappings)
+				Watchdog.instance().interruptMe(getDispatcher().getTimeout());
+				try {
+					LDAPEntry entry = searchSamAccount(pattern, samAccount);
+					if (entry != null)
 					{
-						if (m.getSystemObject().equals(pattern.getObjectType()))
-							return parseEntry(entry, m);
+						for (ObjectMapping m: objectMappings)
+						{
+							if (m.getSystemObject().equals(pattern.getObjectType()))
+								return parseEntry(entry, m);
+						}
 					}
+					return null;
+				} finally {
+					Watchdog.instance().dontDisturb();
 				}
-				return null;
 			}
 		});
 	}
@@ -1010,6 +1021,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			InternalErrorException
 	{
 		Set<String> accounts = new HashSet<String>();
+		Watchdog.instance().interruptMe(getDispatcher().getLongTimeout());
 		try
 		{
 			accounts.addAll(getSoffidAccounts(SoffidObjectType.OBJECT_USER));
@@ -1018,6 +1030,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		catch (Exception e)
 		{
 			throw new InternalErrorException("Error getting accounts list", e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 		return new LinkedList<String>(accounts);
 	}
@@ -1042,6 +1056,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			InternalErrorException
 	{
 		ExtensibleObject eo;
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
 			eo = findExtensibleUser(userAccount);
@@ -1053,6 +1068,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		catch (Exception e)
 		{
 			throw new InternalErrorException(e.getMessage());
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 		if (eo == null)
@@ -1113,6 +1130,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			InternalErrorException
 	{
 		Set<String> roles = new HashSet<String>();
+		Watchdog.instance().interruptMe(getDispatcher().getLongTimeout());
 		try
 		{
 			roles.addAll(getSoffidRoles(SoffidObjectType.OBJECT_GROUP));
@@ -1123,6 +1141,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw new InternalErrorException("Error getting accounts list", e);
 		} catch (Exception e) {
 			throw new InternalErrorException("Error getting accounts list", e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 		return new LinkedList<String>(roles);
 	}
@@ -1236,6 +1256,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		for (ExtensibleObject systemObject : systemObjects.getObjects())
 		{
 			LDAPEntry entry = null;
+			Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 			try
 			{
 				entry = searchSamAccount(systemObject, roleName);
@@ -1249,6 +1270,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				throw e;
 			} catch (Exception e) {
 				throw new InternalErrorException(e.getMessage(), e);
+			} finally {
+				Watchdog.instance().dontDisturb();
 			}
 			if (entry != null)
 			{
@@ -1285,6 +1308,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		Rol userRole; // User role
 		LinkedList<Rol> rolesList = new LinkedList<Rol>(); // User roles
 		LDAPEntry userEntry;	 // User LDAP entry
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
 			ExtensibleObject eo = findExtensibleUser(userAccount);
@@ -1320,50 +1344,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 		return rolesList;
-	}
-
-	private boolean populateRolesFromUser (String userAccount, List<Rol> roles)
-			throws Exception
-	{
-		boolean found = true;
-		ExtensibleObject userObject = findExtensibleUser(userAccount);
-		ExtensibleObjects soffidObjects =
-				objectTranslator.parseInputObjects(userObject);
-		for (ExtensibleObject soffidObject : soffidObjects.getObjects())
-		{
-			List<Map<String, Object>> grantedRoles =
-					(List<Map<String, Object>>) soffidObject.get("grantedRoles");
-			if (grantedRoles != null)
-			{
-				for (Map<String, Object> grantedRole : grantedRoles)
-				{
-					Rol rol = new Rol();
-					rol.setBaseDeDades(getDispatcher().getCodi());
-					rol.setNom(vom.toSingleString(grantedRole.get("grantedRole")));
-					rol.setDescripcio(rol.getNom() + " Auto generated");
-					roles.add(rol);
-				}
-				found = true;
-			}
-			List<String> granted = (List<String>) soffidObject.get("granted");
-			if (granted != null)
-			{
-				for (String grantedRole : granted)
-				{
-					Rol rol = new Rol();
-					rol.setBaseDeDades(getDispatcher().getCodi());
-					rol.setNom(grantedRole);
-					rol.setDescripcio(rol.getNom() + " Auto generated");
-					roles.add(rol);
-				}
-				found = true;
-			}
-		}
-
-		return found;
 	}
 
 	public void updateUser (String userName, Usuari userData)
@@ -1378,6 +1363,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				objectTranslator.generateObjects(new UserExtensibleObject(account,
 						userData, getServer()));
 
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
 			updateObjects(userName, objects);
@@ -1408,6 +1394,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException("Error updating user", e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 	}
 
@@ -1579,6 +1567,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								soffidRole, getServer()));
 			}
 
+			if (eo.getObjects().isEmpty())
+				return;
+			
 			LDAPEntry groupEntry = searchSamAccount(eo.getObjects().get(0), group);
 
 			// No existing group
@@ -1614,6 +1605,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				objectTranslator.generateObjects(new AccountExtensibleObject(account,
 						getServer()));
 
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
 			updateObjects(accountName, objects);
@@ -1644,6 +1636,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 	}
@@ -1673,6 +1667,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					objectTranslator.generateObjects(new AccountExtensibleObject(account,
 							getServer()));
 		}
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			removeObjects(userName, objects);
 		}
@@ -1681,6 +1676,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 	}
@@ -1707,6 +1704,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					objectTranslator.generateObjects(new AccountExtensibleObject(account,
 							getServer()));
 
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			updatePassword(userName, objects, password, mustchange);
 		}
@@ -1715,6 +1713,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 	}
@@ -1727,6 +1727,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			ExtensibleObjects objects =
 					objectTranslator.generateObjects(new RoleExtensibleObject(rol,
 							getServer()));
+			Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 			try {
 				updateObjects(rol.getNom(), objects);
 			}
@@ -1735,6 +1736,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				throw e;
 			} catch (Exception e) {
 				throw new InternalErrorException(e.getMessage(), e);
+			} finally {
+				Watchdog.instance().dontDisturb();
 			}
 
 		}
@@ -1749,6 +1752,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		ExtensibleObjects objects =
 				objectTranslator.generateObjects(new RoleExtensibleObject(rol,
 						getServer()));
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			removeObjects(rolName, objects);
 		}
@@ -1757,8 +1761,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
-		
 	}
 
 	public void updateGroup (String key, Grup grup) throws RemoteException,
@@ -1767,6 +1772,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		ExtensibleObjects objects =
 				objectTranslator.generateObjects(new GroupExtensibleObject(grup,
 						getDispatcher().getCodi(), getServer()));
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			updateObjects(key, objects);
 		}
@@ -1775,6 +1781,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 	}
 
@@ -1786,6 +1794,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		ExtensibleObjects objects =
 				objectTranslator.generateObjects(new GroupExtensibleObject(grup,
 						getDispatcher().getCodi(), getServer()));
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			removeObjects(key, objects);
 		}
@@ -1794,6 +1803,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 	}
 
@@ -2113,6 +2124,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	{
 		Collection<AuthoritativeChange> changes =
 				new LinkedList<AuthoritativeChange>();
+		Watchdog.instance().interruptMe(getDispatcher().getLongTimeout());
 		try
 		{
 			if (firstChange)
@@ -2205,6 +2217,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 		return changes;
 	}
@@ -2238,6 +2252,22 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
+	public void debugModifications (String action, String dn,
+			LDAPAttributeSet atts)
+	{
+		if (debugEnabled)
+		{
+			log.info("=========================================================");
+			log.info(action + " object " + dn);
+			for (Iterator iterator = atts.iterator(); iterator.hasNext();)
+			{
+				LDAPAttribute att = (LDAPAttribute) iterator.next();
+				debugAttribute(LDAPModification.ADD, att);
+			}
+			log.info("=========================================================");
+		}
+	}
+
 	private void debugAttribute (int op, LDAPAttribute ldapAttribute)
 	{
 		String attAction =
@@ -2264,6 +2294,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			InternalErrorException
 	{
 		ExtensibleObject eo;
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
 			eo = findExtensibleUser(userAccount);
@@ -2277,6 +2308,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 		if (eo == null)
@@ -2297,6 +2330,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		Rol userRole; // User role
 		LinkedList<RolGrant> rolesList = new LinkedList<RolGrant>(); // User roles
 		LDAPEntry userEntry;	 // User LDAP entry
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
 			ExtensibleObject eo = findExtensibleUser(userAccount);
@@ -2341,6 +2375,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
 		}
 
 		return rolesList;
