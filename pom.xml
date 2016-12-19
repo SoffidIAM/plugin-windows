@@ -10,7 +10,7 @@
   <artifactId>windows-plugin</artifactId>
   <packaging>jar</packaging>
   <name>Windows plugin</name>
-  <version>2.3.1-SNAPSHOT</version>
+  <version>3.0.0</version>
   <dependencies>
     <dependency>
     	<groupId>com.soffid.iam.sync.w32</groupId>
@@ -44,7 +44,7 @@
   </licenses>
   <scm>
           <connection>scm:git:ssh://git@stash.dev.lab:7999/iam2/plugin-windows.git</connection>
-          <tag>HEAD</tag>
+          <tag>windows-plugin-3.0.0</tag>
   </scm>
  
   
