@@ -77,7 +77,7 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 		ReconcileMgr2, RoleMgr {
 	Log log = LogFactory.getLog(getClass());
 
-	static final String EXE_NAME = "usradm-2.0.0.exe";
+	static final String EXE_NAME = "usradm-2.0.1.exe";
 	static final String DLL_NAME = "libwinpthread-1.dll";
 
 	static final String NET_NAME = "net";
@@ -327,16 +327,11 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 						+ serverName + "\" -Fe -q" + suffix);
 				if (result != 0) {
 					throw new InternalErrorException("Error creando usuario "
-							+ user);
+							+ user+": "+p.getOutput()+"\n"+p.getError());
 				}
 			}
 			// Obtener los groups del usuario
 			StringBuffer groupsConcat = new StringBuffer();
-			for (Grup grup : getServer().getUserGroups(user, getCodi())) {
-				if (groupsConcat.length() > 0)
-					groupsConcat.append(",");
-				groupsConcat.append(grup.getCodi());
-			}
 			for (RolGrant role : getServer().getAccountRoles(user, getCodi())) {
 				if (groupsConcat.length() > 0)
 					groupsConcat.append(",");
@@ -347,7 +342,7 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 					+ "\" -n \"" + ui.getFullName() + "\" ";
 			if (ui.getServidorHome() == null
 					|| ui.getServidorHome().equals("null"))
-				args = args + "-H \"\" -h \"\"\"\\\\";
+				args = args + "-H \"\" -h \"\" ";
 			else
 				args = args + "-H H: -h \"\\\\" + ui.getServidorHome() + "\\"
 						+ user + "\" ";

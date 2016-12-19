@@ -51,6 +51,7 @@ import es.caib.seycon.ng.exception.UnknownUserException;
 import es.caib.seycon.ng.sync.engine.Watchdog;
 import es.caib.seycon.ng.sync.engine.extobj.AccountExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.ExtensibleObjectFinder;
+import es.caib.seycon.ng.sync.engine.extobj.GrantExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.GroupExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.ObjectTranslator;
 import es.caib.seycon.ng.sync.engine.extobj.RoleExtensibleObject;
@@ -85,6 +86,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		implements ExtensibleObjectMgr, UserMgr, ReconcileMgr2, RoleMgr, GroupMgr,
 		KerberosAgent, AuthoritativeIdentitySource2
 {
+
+	private static final String USER_ACCOUNT_CONTROL = "userAccountControl";
 
 	LDAPPool pool = null;
 	
@@ -174,7 +177,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	private String baseDN;
 
-	private boolean debugEnabled;
+	protected boolean debugEnabled;
 	// --------------------------------------------------------------
 
 	/**
@@ -246,16 +249,18 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	 * @throws Exception 
 	 */
 	@SuppressWarnings ({ "unchecked", "rawtypes" })
-	public void updatePassword (String accountName, ExtensibleObjects objects,
+	public void updatePassword (ExtensibleObject sourceObject, 
+			String accountName, ExtensibleObjects objects,
 			Password password, boolean mustchange) throws Exception
 	{
 		for (ExtensibleObject object : objects.getObjects())
 		{
-			updateObjectPassword(accountName, object, password, mustchange, false);
+			updateObjectPassword(sourceObject, accountName, object, password, mustchange, false);
 		}
 	}
 
-	private void updateObjectPassword (String accountName,
+	private void updateObjectPassword (ExtensibleObject sourceObject,
+			String accountName,
 			ExtensibleObject object, Password password, boolean mustchange,
 			boolean delegation) throws Exception
 	{
@@ -274,7 +279,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 					if (ldapUser == null)
 					{
-						updateObject(accountName, object);
+						updateObject(accountName, object,sourceObject );
 						ldapUser = searchSamAccount(object, samAccount);
 					}
 
@@ -290,7 +295,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					if (e.getResultCode() == LDAPException.UNWILLING_TO_PERFORM
 							&& !repeat)
 					{
-						updateObject(accountName, object);
+						updateObject(accountName, object, sourceObject);
 						repeat = true;
 					}
 					else if (e.getResultCode() == LDAPException.ATTRIBUTE_OR_VALUE_EXISTS)
@@ -341,7 +346,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		else
 			modList.add(new LDAPModification(LDAPModification.REPLACE, atributo));
 		// Unlock account
-		LDAPAttribute att = ldapUser.getAttribute("userAccountControl");
+		LDAPAttribute att = ldapUser.getAttribute(USER_ACCOUNT_CONTROL);
 		int status = 0;
 		if (att != null)
 			status = Integer.decode(att.getStringValue()).intValue();
@@ -369,7 +374,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			status = status | ADS_UF_NORMAL_ACCOUNT;
 
 		modList.add(new LDAPModification(LDAPModification.REPLACE,
-				new LDAPAttribute("userAccountControl", Integer.toString(status))));
+				new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer.toString(status))));
 
 		LDAPModification[] mods = new LDAPModification[modList.size()];
 		mods = (LDAPModification[]) modList.toArray(mods);
@@ -482,18 +487,19 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	 * Añade los datos de un usuario al directorio LDAP
 	 * 
 	 * @param accountName
+	 * @param source 
 	 * 
 	 * @param usuario
 	 *          Informacion del usuario
 	 * @throws Exception 
 	 */
-	public void updateObjects (String accountName, ExtensibleObjects objects)
+	public void updateObjects (String accountName, ExtensibleObjects objects, ExtensibleObject source)
 			throws Exception
 	{
 
 		for (ExtensibleObject object : objects.getObjects())
 		{
-			updateObject(accountName, object);
+			updateObject(accountName, object, source);
 		}
 	}
 
@@ -555,7 +561,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
-	private void updateObject (String accountName, ExtensibleObject object)
+	private void updateObject (String accountName, ExtensibleObject object, ExtensibleObject source)
 			throws Exception
 	{
 		LDAPConnection conn = pool.getConnection();
@@ -566,118 +572,126 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			entry = searchSamAccount(object, accountName);
 			if (entry == null)
 			{
-				LDAPAttributeSet attributeSet = new LDAPAttributeSet();
-				for (String attribute : object.getAttributes())
+				if (preInsert(source,object))
 				{
-					String values[] = toStringArray(object.getAttribute(attribute));
-					if (values != null && !"dn".equals(attribute)
-							&& !"baseDn".equals(attribute)
-							&& !SAM_ACCOUNT_NAME_ATTRIBUTE.equals(attribute))
+					LDAPAttributeSet attributeSet = new LDAPAttributeSet();
+					for (String attribute : object.getAttributes())
 					{
-						attributeSet.add(new LDAPAttribute(attribute, values));
+						String values[] = toStringArray(object.getAttribute(attribute));
+						if (values != null && !"dn".equals(attribute)
+								&& !"baseDn".equals(attribute)
+								&& !SAM_ACCOUNT_NAME_ATTRIBUTE.equals(attribute))
+						{
+							attributeSet.add(new LDAPAttribute(attribute, values));
+						}
 					}
-				}
-				attributeSet.add(new LDAPAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE,
-						accountName));
-
-				if (object.getAttribute("userAccountControl") == null)
-				{
-					if ("user".equals(object.getObjectType())
-							|| "account".equals(object.getObjectType()))
-						attributeSet.add(new LDAPAttribute("userAccountControl", Integer
-								.toString(ADS_UF_ACCOUNTDISABLE + ADS_UF_NORMAL_ACCOUNT)));
-				}
-
-				String dn = getDN(object);
-				int i = dn.indexOf(",");
-				if (i > 0)
-				{
-					String parentName = dn.substring(i + 1);
-					createParents(parentName);
-				}
-				debugModifications("Adding user", dn, attributeSet);
-				entry = new LDAPEntry(dn, attributeSet);
-				conn.add(entry);
-				if ((accountName != null)
-						&& ("user".equals(object.getObjectType()) || "account"
-								.equals(object.getObjectType())))
-				{
-					Password p = getServer().getAccountPassword(accountName, getCodi());
-					if (p != null)
+					attributeSet.add(new LDAPAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE,
+							accountName));
+	
+					if (object.getAttribute(USER_ACCOUNT_CONTROL) == null)
 					{
-						updateObjectPassword(accountName, object, p, false, false);
+						if ("user".equals(object.getObjectType())
+								|| "account".equals(object.getObjectType()))
+							attributeSet.add(new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
+									.toString(ADS_UF_ACCOUNTDISABLE + ADS_UF_NORMAL_ACCOUNT)));
 					}
-					else
+	
+					String dn = getDN(object);
+					int i = dn.indexOf(",");
+					if (i > 0)
 					{
-						p = getServer().generateFakePassword(accountName, getCodi());
-						updateObjectPassword(accountName, object, p, true, false);
+						String parentName = dn.substring(i + 1);
+						createParents(parentName);
+					}
+					debugModifications("Adding user", dn, attributeSet);
+					entry = new LDAPEntry(dn, attributeSet);
+					conn.add(entry);
+					postInsert(source, object, entry);
+					if ((accountName != null)
+							&& ("user".equals(object.getObjectType()) || "account"
+									.equals(object.getObjectType())))
+					{
+						Password p = getServer().getAccountPassword(accountName, getCodi());
+						if (p != null)
+						{
+							updateObjectPassword(source, accountName, object, p, false, false);
+						}
+						else
+						{
+							p = getServer().generateFakePassword(accountName, getCodi());
+							updateObjectPassword(source, accountName, object, p, true, false);
+						}
 					}
 				}
 			}
 			else
 			{
-				LinkedList<LDAPModification> modList =
-						new LinkedList<LDAPModification>();
-				for (String attribute : object.getAttributes())
+				if (preUpdate(source, object, entry))
 				{
-					if (!"dn".equals(attribute) && !"objectClass".equals(attribute)
-							&& !"baseDn".equals(attribute) && !SAM_ACCOUNT_NAME_ATTRIBUTE.equals(attribute))
+					LinkedList<LDAPModification> modList =
+							new LinkedList<LDAPModification>();
+					for (String attribute : object.getAttributes())
 					{
-						String[] value = toStringArray(object.getAttribute(attribute));
-						if (value == null && entry.getAttribute(attribute) != null)
+						if (!"dn".equals(attribute) && !"objectClass".equals(attribute)
+								&& !"baseDn".equals(attribute) && !SAM_ACCOUNT_NAME_ATTRIBUTE.equals(attribute))
 						{
-							modList.add(new LDAPModification(LDAPModification.DELETE,
-									new LDAPAttribute(attribute)));
-						}
-						else if (value != null && entry.getAttribute(attribute) == null)
-						{
-							modList.add(new LDAPModification(LDAPModification.ADD,
-									new LDAPAttribute(attribute, value)));
-						}
-						else if ((value != null) && (entry.getAttribute(attribute) != null)
-								&& !"cn".equalsIgnoreCase(attribute))
-						{
-							if (value.length != 1
-									|| !value[0].equals(entry.getAttribute(attribute)
-											.getStringValue()))
+							String[] value = toStringArray(object.getAttribute(attribute));
+							if (value == null && entry.getAttribute(attribute) != null)
 							{
-								modList.add(new LDAPModification(LDAPModification.REPLACE,
+								modList.add(new LDAPModification(LDAPModification.DELETE,
+										new LDAPAttribute(attribute)));
+							}
+							else if (value != null && entry.getAttribute(attribute) == null)
+							{
+								modList.add(new LDAPModification(LDAPModification.ADD,
 										new LDAPAttribute(attribute, value)));
+							}
+							else if ((value != null) && (entry.getAttribute(attribute) != null)
+									&& !"cn".equalsIgnoreCase(attribute))
+							{
+								if (value.length != 1
+										|| !value[0].equals(entry.getAttribute(attribute)
+												.getStringValue()))
+								{
+									modList.add(new LDAPModification(LDAPModification.REPLACE,
+											new LDAPAttribute(attribute, value)));
+								}
 							}
 						}
 					}
-				}
-
-				if (modList.size() > 0)
-				{
-					LDAPModification[] mods = new LDAPModification[modList.size()];
-					mods = (LDAPModification[]) modList.toArray(mods);
-					debugModifications("Modifying object ", entry.getDN(), mods);
-					conn.modify(entry.getDN(), mods);
-				}
-
-				String dn = getDN(object);
-
-				if (!entry.getDN().equalsIgnoreCase(dn) && ! entry.getDN().contains(",CN=Builtin,"))
-				{
-					// Check if must rename
-					boolean rename = true;
-					ExtensibleObjectMapping mapping = getMapping ( object.getObjectType());
-					if (mapping != null)
+	
+					if (modList.size() > 0)
 					{
-						rename = ! "false".equalsIgnoreCase(mapping.getProperties().get("rename"));
+						LDAPModification[] mods = new LDAPModification[modList.size()];
+						mods = (LDAPModification[]) modList.toArray(mods);
+						debugModifications("Modifying object ", entry.getDN(), mods);
+						conn.modify(entry.getDN(), mods);
+						postUpdate(source, object, entry);
 					}
-					if (rename)
+				
+					String dn = getDN(object);
+	
+					if (!entry.getDN().equalsIgnoreCase(dn) && ! entry.getDN().contains(",CN=Builtin,"))
 					{
-						int i = dn.indexOf(",");
-						if (i > 0)
+						// Check if must rename
+						boolean rename = true;
+						ExtensibleObjectMapping mapping = getMapping ( object.getObjectType());
+						if (mapping != null)
 						{
-							String parentName = dn.substring(i + 1);
-							createParents(parentName);
-							
-							entry = conn.read(entry.getDN());
-							conn.rename(entry.getDN(), dn.substring(0, i),
-									parentName, true);
+							rename = ! "false".equalsIgnoreCase(mapping.getProperties().get("rename"));
+						}
+						if (rename)
+						{
+							int i = dn.indexOf(",");
+							if (i > 0)
+							{
+								String parentName = dn.substring(i + 1);
+								createParents(parentName);
+								
+								entry = conn.read(entry.getDN());
+								conn.rename(entry.getDN(), dn.substring(0, i),
+										parentName, true);
+							}
 						}
 					}
 				}
@@ -702,7 +716,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		return null;
 	}
 
-	public void removeObjects (String account, ExtensibleObjects objects)
+	public void removeObjects (String account, ExtensibleObjects objects, ExtensibleObject source)
 			throws Exception
 	{
 		LDAPConnection conn = pool.getConnection();
@@ -723,47 +737,51 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 				if (entry != null)
 				{
-					String dn = entry.getDN();
-					try
+					if (preDelete(source, entry))
 					{
-						if (!"user".equals(object.getObjectType())
-								&& !"account".equals(object.getObjectType()))
+						String dn = entry.getDN();
+						try
 						{
-							log.info("Removing object {}", dn, null);
-							conn.delete(dn);
+							if (!"user".equals(object.getObjectType())
+									&& !"account".equals(object.getObjectType()))
+							{
+								log.info("Removing object {}", dn, null);
+								conn.delete(dn);
+							}
+							else
+							{
+								LinkedList<LDAPModification> modList =
+										new LinkedList<LDAPModification>();
+		
+								addDeletion(modList, entry, "profilePath");
+								addDeletion(modList, entry, "homeDrive");
+								addDeletion(modList, entry, "homeDirectory");
+		
+								int status = 0;
+								LDAPAttribute att = entry.getAttribute(USER_ACCOUNT_CONTROL);
+								if (att != null)
+									status = Integer.decode(att.getStringValue()).intValue();
+		
+								status = status | ADS_UF_ACCOUNTDISABLE;
+		
+								modList.add(new LDAPModification(LDAPModification.REPLACE,
+										new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
+												.toString(status))));
+		
+								LDAPModification[] mods = new LDAPModification[modList.size()];
+								mods = (LDAPModification[]) modList.toArray(mods);
+								debugModifications("Disabling object ", dn, mods);
+								conn.modify(dn, mods);
+							}
+							postDelete(source, entry);
+		
 						}
-						else
+						catch (Exception e)
 						{
-							LinkedList<LDAPModification> modList =
-									new LinkedList<LDAPModification>();
-	
-							addDeletion(modList, entry, "profilePath");
-							addDeletion(modList, entry, "homeDrive");
-							addDeletion(modList, entry, "homeDirectory");
-	
-							int status = 0;
-							LDAPAttribute att = entry.getAttribute("userAccountControl");
-							if (att != null)
-								status = Integer.decode(att.getStringValue()).intValue();
-	
-							status = status | ADS_UF_ACCOUNTDISABLE;
-	
-							modList.add(new LDAPModification(LDAPModification.REPLACE,
-									new LDAPAttribute("userAccountControl", Integer
-											.toString(status))));
-	
-							LDAPModification[] mods = new LDAPModification[modList.size()];
-							mods = (LDAPModification[]) modList.toArray(mods);
-							debugModifications("Disabling object ", dn, mods);
-							conn.modify(dn, mods);
+							String msg = "updating object : " + dn;
+							log.warn(msg, e);
+							throw new InternalErrorException(msg, e);
 						}
-	
-					}
-					catch (Exception e)
-					{
-						String msg = "updating object : " + dn;
-						log.warn(msg, e);
-						throw new InternalErrorException(msg, e);
 					}
 				}
 			}
@@ -1359,14 +1377,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		account.setDescription(userData.getFullName());
 		account.setDisabled(userData.getActiu());
 		account.setDispatcher(getDispatcher().getCodi());
+		UserExtensibleObject source = new UserExtensibleObject(account,
+				userData, getServer());
 		ExtensibleObjects objects =
-				objectTranslator.generateObjects(new UserExtensibleObject(account,
-						userData, getServer()));
+				objectTranslator.generateObjects(source);
 
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
-			updateObjects(userName, objects);
+			updateObjects(userName, objects, source);
 			for (ExtensibleObject object : objects.getObjects())
 			{
 				if ("user".equals(object.getObjectType())
@@ -1415,7 +1434,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 			// Update 'userAccountControl' attribute
 			int status = 0;
-			LDAPAttribute att = entry.getAttribute("userAccountControl");
+			LDAPAttribute att = entry.getAttribute(USER_ACCOUNT_CONTROL);
 
 			if (att != null)
 				status = Integer.decode(att.getStringValue()).intValue();
@@ -1431,7 +1450,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 			modif =
 					new LDAPModification(LDAPModification.REPLACE, new LDAPAttribute(
-							"userAccountControl", Integer.toString(status)));
+							USER_ACCOUNT_CONTROL, Integer.toString(status)));
 			debugModifications("Updating user data ", entry.getDN(),
 					new LDAPModification[] { modif });
 			LDAPConnection conn = pool.getConnection();
@@ -1528,17 +1547,24 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 			else
 			{
-				LDAPModification ldapModification =
-						new LDAPModification(LDAPModification.DELETE, new LDAPAttribute(
-								"member", userEntry.getDN()));
-				debugModifications("Removing group member ", groupEntry.getDN(),
-						new LDAPModification[] { ldapModification });
-				c.modify(groupEntry.getDN(), ldapModification);
+				if (preDeleteTrigger (groupEntry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE).getStringValue(), userName, 
+						groupEntry, userEntry))
+				{
+					LDAPModification ldapModification =
+							new LDAPModification(LDAPModification.DELETE, new LDAPAttribute(
+									"member", userEntry.getDN()));
+					debugModifications("Removing group member ", groupEntry.getDN(),
+							new LDAPModification[] { ldapModification });
+					c.modify(groupEntry.getDN(), ldapModification);
+					postDeleteTrigger (groupEntry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE).getStringValue(), userName, 
+							groupEntry, userEntry);
+				}
 			}
 		} finally {
 			pool.returnConnection();
 		}
 	}
+
 
 	private void addGroupMember (String group, String user, LDAPEntry userEntry)
 			throws Exception
@@ -1550,12 +1576,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		LDAPConnection lc = pool.getConnection();
 		try
 		{
+			ExtensibleObject targetObject = new ExtensibleObject();
+			RolGrant grant = new RolGrant();
+			grant.setOwnerAccountName(user);
+			grant.setOwnerDispatcher(getDispatcher().getCodi());
+			ExtensibleObject sourceObject = new GrantExtensibleObject(grant, getServer());
 			try
 			{
 				soffidGroup =
 						getServer().getGroupInfo(group, getDispatcher().getCodi());
-				eo =
-						objectTranslator.generateObjects(new GroupExtensibleObject(
+				eo = objectTranslator.generateObjects(new GroupExtensibleObject(
 								soffidGroup, getDispatcher().getCodi(), getServer()));
 			}
 
@@ -1581,13 +1611,18 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					updateRole(soffidRole);
 				groupEntry = searchSamAccount(eo.getObjects().get(0), group);
 			}
-			LDAPModification ldapModification =
-					new LDAPModification(LDAPModification.ADD, new LDAPAttribute(
-							"member", userEntry.getDN()));
-			debugModifications("Adding group member ", groupEntry.getDN(),
-					new LDAPModification[] { ldapModification });
-			lc.modify(groupEntry.getDN(), ldapModification);
-			log.info("Added", null, null);
+			
+			if (preInsertTrigger ( group, user, groupEntry, userEntry))
+			{
+				LDAPModification ldapModification =
+						new LDAPModification(LDAPModification.ADD, new LDAPAttribute(
+								"member", userEntry.getDN()));
+				debugModifications("Adding group member ", groupEntry.getDN(),
+						new LDAPModification[] { ldapModification });
+				lc.modify(groupEntry.getDN(), ldapModification);
+				log.info("Added", null, null);
+				postInsertTrigger (group, user, groupEntry, userEntry);
+			}
 		} finally {
 			pool.returnConnection();
 		}
@@ -1601,14 +1636,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		account.setDescription(description);
 		account.setDisabled(false);
 		account.setDispatcher(getDispatcher().getCodi());
+		AccountExtensibleObject sourceObject = new AccountExtensibleObject(account,
+				getServer());
 		ExtensibleObjects objects =
-				objectTranslator.generateObjects(new AccountExtensibleObject(account,
-						getServer()));
+				objectTranslator.generateObjects(sourceObject);
 
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
-			updateObjects(accountName, objects);
+			updateObjects(accountName, objects, sourceObject);
 			for (ExtensibleObject object : objects.getObjects())
 			{
 				if ("user".equals(object.getObjectType())
@@ -1652,24 +1688,25 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		account.setDisabled(true);
 		account.setDispatcher(getDispatcher().getCodi());
 		ExtensibleObjects objects;
+		ExtensibleObject sourceObject;
 
 		try
 		{
 			Usuari user =
 					getServer().getUserInfo(userName, getDispatcher().getCodi());
 			objects =
-					objectTranslator.generateObjects(new UserExtensibleObject(account,
+					objectTranslator.generateObjects(sourceObject = new UserExtensibleObject(account,
 							user, getServer()));
 		}
 		catch (UnknownUserException e)
 		{
 			objects =
-					objectTranslator.generateObjects(new AccountExtensibleObject(account,
+					objectTranslator.generateObjects(sourceObject = new AccountExtensibleObject(account,
 							getServer()));
 		}
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			removeObjects(userName, objects);
+			removeObjects(userName, objects, sourceObject);
 		}
 		catch (InternalErrorException e)
 		{
@@ -1694,19 +1731,22 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		account.setDispatcher(getDispatcher().getCodi());
 
 		ExtensibleObjects objects = null;
+		ExtensibleObject sourceObject;
 		if (userData != null)
 			objects =
-					objectTranslator.generateObjects(new UserExtensibleObject(account,
+					objectTranslator.generateObjects(sourceObject =
+						new UserExtensibleObject(account,
 							userData, getServer()));
 
 		else
 			objects =
-					objectTranslator.generateObjects(new AccountExtensibleObject(account,
+					objectTranslator.generateObjects(sourceObject =
+						new AccountExtensibleObject(account,
 							getServer()));
 
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			updatePassword(userName, objects, password, mustchange);
+			updatePassword(sourceObject, userName, objects, password, mustchange);
 		}
 		catch (InternalErrorException e)
 		{
@@ -1724,12 +1764,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	{
 		if (rol.getBaseDeDades().equals(getDispatcher().getCodi()))
 		{
+			RoleExtensibleObject sourceObject = new RoleExtensibleObject(rol,
+					getServer());
 			ExtensibleObjects objects =
-					objectTranslator.generateObjects(new RoleExtensibleObject(rol,
-							getServer()));
+					objectTranslator.generateObjects(sourceObject);
 			Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 			try {
-				updateObjects(rol.getNom(), objects);
+				updateObjects(rol.getNom(), objects, sourceObject);
 			}
 			catch (InternalErrorException e)
 			{
@@ -1749,12 +1790,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		Rol rol = new Rol();
 		rol.setNom(rolName);
 		rol.setBaseDeDades(dispatcher);
+		RoleExtensibleObject sourceObject = new RoleExtensibleObject(rol,
+				getServer());
 		ExtensibleObjects objects =
-				objectTranslator.generateObjects(new RoleExtensibleObject(rol,
-						getServer()));
+				objectTranslator.generateObjects(sourceObject);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			removeObjects(rolName, objects);
+			removeObjects(rolName, objects, sourceObject);
 		}
 		catch (InternalErrorException e)
 		{
@@ -1769,12 +1811,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public void updateGroup (String key, Grup grup) throws RemoteException,
 			InternalErrorException
 	{
+		GroupExtensibleObject sourceObject = new GroupExtensibleObject(grup,
+				getDispatcher().getCodi(), getServer());
 		ExtensibleObjects objects =
-				objectTranslator.generateObjects(new GroupExtensibleObject(grup,
-						getDispatcher().getCodi(), getServer()));
+				objectTranslator.generateObjects(sourceObject);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			updateObjects(key, objects);
+			updateObjects(key, objects, sourceObject);
 		}
 		catch (InternalErrorException e)
 		{
@@ -1791,12 +1834,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	{
 		Grup grup = new Grup();
 		grup.setCodi(key);
+		GroupExtensibleObject sourceObject = new GroupExtensibleObject(grup,
+				getDispatcher().getCodi(), getServer());
 		ExtensibleObjects objects =
-				objectTranslator.generateObjects(new GroupExtensibleObject(grup,
-						getDispatcher().getCodi(), getServer()));
+				objectTranslator.generateObjects(sourceObject);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			removeObjects(key, objects);
+			removeObjects(key, objects, sourceObject);
 		}
 		catch (InternalErrorException e)
 		{
@@ -1869,7 +1913,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						}
 
 						// Bind to be run as a service
-						attributeSet.add(new LDAPAttribute("userAccountControl", Integer
+						attributeSet.add(new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
 								.toString(ADS_UF_ACCOUNTDISABLE | ADS_UF_NORMAL_ACCOUNT
 										| ADS_UF_TRUSTED_FOR_DELEGATION)));
 
@@ -1895,7 +1939,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							new LDAPModification[] {
 									new LDAPModification(LDAPModification.REPLACE, atributo),
 									new LDAPModification(LDAPModification.REPLACE,
-											new LDAPAttribute("userAccountControl",
+											new LDAPAttribute(USER_ACCOUNT_CONTROL,
 													Integer.toString(status))) };
 					debugModifications("Removing group member ", entry.getDN(), mods);
 					lc.modify(entry.getDN(), mods);
@@ -1995,6 +2039,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				sb.append("(&");
 				boolean any = false;
 				String base = baseDN;
+				if (mapping.getProperties().containsKey("baseDN"))
+					base = mapping.getProperties().get("baseDN");
 				for (String att : dummySystemObject.getAttributes())
 				{
 					String value =
@@ -2268,11 +2314,29 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
+	public void debugEntry (String action, String dn,
+			LDAPAttributeSet atts)
+	{
+		if (debugEnabled)
+		{
+			log.info("=========================================================");
+			log.info(action + " object " + dn);
+			for (Iterator iterator = atts.iterator(); iterator.hasNext();)
+			{
+				LDAPAttribute att = (LDAPAttribute) iterator.next();
+				debugAttribute(-1, att);
+			}
+			log.info("=========================================================");
+		}
+	}
+
 	private void debugAttribute (int op, LDAPAttribute ldapAttribute)
 	{
 		String attAction =
-				op == LDAPModification.ADD ? "ADD"
-						: op == LDAPModification.DELETE ? "DELETE" : "REPLACE";
+				op == -1 ? "" :
+				op == LDAPModification.ADD ? "ADD" :
+				op == LDAPModification.DELETE ? "DELETE" : 
+					"REPLACE";
 		StringBuffer b = new StringBuffer(attAction);
 		b.append(" ").append(ldapAttribute.getName());
 		if (op != LDAPModification.DELETE)
@@ -2319,7 +2383,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		{
 			Account account = vom.parseAccount(peo);
 			if (account != null)
+			{
+				Object status = eo.getAttribute(USER_ACCOUNT_CONTROL);
+				if (status != null)
+				{
+					Integer i = Integer.parseInt(status.toString());
+					account.setDisabled( ( i & ADS_UF_ACCOUNTDISABLE ) != 0 );
+				}
 				return account;
+			}
 		}
 		return null;
 	}
@@ -2333,36 +2405,53 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try
 		{
+			if (debugEnabled)
+				log.info ("Finding user "+userAccount);
 			ExtensibleObject eo = findExtensibleUser(userAccount);
-			LDAPAttribute memberofattr; // User LDAP groups
-			String userGroups[]; // User group array
-
-			Object memberofattr1 = eo.getAttribute("dn");
-			userEntry = searchEntry(memberofattr1.toString());
-			memberofattr = userEntry.getAttribute("memberOf");
-			userGroups =
-					(memberofattr == null ? new String[] {} : memberofattr
-							.getStringValueArray());
-
-			// Process the user groups
-			for (int i = 0; i < userGroups.length; i++)
+			if (eo != null)
 			{
-				String group =
-						searchEntry(userGroups[i]).getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE)
-								.getStringValue();
-
-				userRole = getRoleFullInfo(group);
-
-				if (userRole != null)
+				LDAPAttribute memberofattr; // User LDAP groups
+				String userGroups[]; // User group array
+	
+				Object memberofattr1 = eo.getAttribute("dn");
+				if (debugEnabled)
+					log.info ("Found DN = "+memberofattr1);
+				userEntry = searchEntry(memberofattr1.toString());
+				if (userEntry != null)
 				{
-					log.info("User {} belongs to [{}]", userAccount, userRole.getNom());
-					RolGrant rg = new RolGrant();
-					rg.setOwnerAccountName(userAccount);
-					rg.setRolName(userRole.getNom());
-					rg.setDispatcher(getCodi());
-					rg.setEnabled(true);
-					rg.setOwnerDispatcher(getCodi());
-					rolesList.add(rg);
+					memberofattr = userEntry.getAttribute("memberOf");
+					userGroups =
+							(memberofattr == null ? new String[] {} : memberofattr
+									.getStringValueArray());
+		
+					// Process the user groups
+					for (int i = 0; i < userGroups.length; i++)
+					{
+						String groupName = userGroups[i];
+						LDAPEntry entry = searchEntry(userGroups[i]);
+						if (entry == null)
+							log.info("Warning: Cannot found group "+groupName);
+						else if (entry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE) == null)
+							log.info("Warning: Found group with no sAMAccountName: "+groupName);
+						else
+						{
+							String group = entry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE).getStringValue();
+			
+							userRole = getRoleFullInfo(group);
+			
+							if (userRole != null)
+							{
+								log.info("User {} belongs to [{}]", userAccount, userRole.getNom());
+								RolGrant rg = new RolGrant();
+								rg.setOwnerAccountName(userAccount);
+								rg.setRolName(userRole.getNom());
+								rg.setDispatcher(getCodi());
+								rg.setEnabled(true);
+								rg.setOwnerDispatcher(getCodi());
+								rolesList.add(rg);
+							}
+						}
+					}
 				}
 			}
 		}
@@ -2450,5 +2539,99 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 		}
 		return sb.toString();
+	}
+	
+	
+	protected boolean preUpdate (ExtensibleObject soffidObject, ExtensibleObject adObject, LDAPEntry currentEntry) 
+			throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean preInsert (ExtensibleObject soffidObject, ExtensibleObject adObject) 
+			throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean preDelete (ExtensibleObject soffidObject, LDAPEntry currentEntry) 
+			throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean postUpdate (ExtensibleObject soffidObject, ExtensibleObject adObject, LDAPEntry currentEntry) 
+			throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean postInsert (ExtensibleObject soffidObject, ExtensibleObject adObject, LDAPEntry currentEntry) 
+			throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean postDelete (ExtensibleObject soffidObject, LDAPEntry currentEntry) 
+			throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean postInsertTrigger(String group, String user,
+			LDAPEntry groupEntry, LDAPEntry userEntry) 
+					throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean preInsertTrigger(String group, String user,
+			LDAPEntry groupEntry, LDAPEntry userEntry) 
+					throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean preDeleteTrigger(String stringValue, String userName,
+			LDAPEntry groupEntry, LDAPEntry userEntry) 
+					throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected boolean postDeleteTrigger(String stringValue, String userName,
+			LDAPEntry groupEntry, LDAPEntry userEntry)
+		throws InternalErrorException
+	{
+		return true;
+	}
+
+	protected void debugObject (String msg, Map<String,Object> obj, String indent)
+	{
+		if (debugEnabled)
+		{
+			if (indent == null)
+				indent = "";
+			if (msg != null)
+				log.info(indent + msg);
+			for (String attribute: obj.keySet())
+			{
+				Object subObj = obj.get(attribute);
+				if (subObj == null)
+				{
+					log.info (indent+attribute.toString()+": null");
+				}
+				else if (subObj instanceof Map)
+				{
+					log.info (indent+attribute.toString()+": Object {");
+					debugObject (null, (Map<String, Object>) subObj, indent + "   ");
+					log.info (indent+"}");
+				}
+				else
+				{
+					log.info (indent+attribute.toString()+": "+subObj.toString());
+				}
+			}
+		}
 	}
 }

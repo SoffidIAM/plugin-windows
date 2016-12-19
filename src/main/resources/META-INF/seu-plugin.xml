@@ -109,4 +109,74 @@
 		</object>
 
 	</agent>
+
+	<agent>
+		<name>Customizable Active Directory (with triggers)</name>
+		<javaClass>com.soffid.iam.sync.agent.CustomizableActiveDirectoryAgent2</javaClass>
+		<userInterface>ActiveDirectoryAgent.zul</userInterface>
+		<enableAccessControl>false</enableAccessControl>
+		<enableAttributeMapping>true</enableAttributeMapping>
+		<enableObjectTriggers>true</enableObjectTriggers>
+		<authoritativeSource>true</authoritativeSource>
+
+		<object systemObject="user" soffidObject="user">
+
+			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
+				direction="out" />
+			<mapping soffidAttribute='accountName' systemAttribute='cn'
+				direction="inout" />
+			<mapping soffidAttribute='firstName' systemAttribute='givenName'
+				direction="inout" />
+			<mapping soffidAttribute='lastName' systemAttribute='sn'
+				direction="inout" />
+			<mapping
+				soffidAttribute='shortName==null ? attributes{"MAIL"} : shortName+"@"+mailDomain'
+				systemAttribute='mail' direction="out" />
+			<mapping soffidAttribute='primaryGroup' systemAttribute='departmentNumber'
+				direction="out" />
+			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+				direction="out" />
+			<mapping soffidAttribute='profileServer.equals("null") ? null : "\\\\"+profileServer+"\\PROFILES\\"+accountName'
+				systemAttribute='profilePath' direction='out'/>
+			<mapping soffidAttribute='homeServer.equals("null") ? null : "\\\\" +homeServer+ "\\" + accountName'
+				systemAttribute='homeDirectory' direction='out'/>
+			<mapping soffidAttribute='homeServer.equals("null") ? null : "H:"'
+				systemAttribute='homeDrive' direction="out"/>
+		</object>
+
+		<object systemObject="account" soffidObject="account">
+			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+				direction="out" />
+			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
+				direction="out" />
+			<mapping soffidAttribute='accountName' systemAttribute='cn'
+				direction="inout" />
+			<mapping soffidAttribute='accountDescription' systemAttribute='sn'
+				direction="inout" />
+		</object>
+
+		<object systemObject="role" soffidObject="role">
+			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
+				direction="out" />
+			<mapping
+				soffidAttribute='"cn=Roles,dc=soffid,dc=org"'
+				systemAttribute='baseDn' direction="out" />
+			<mapping soffidAttribute='name' systemAttribute='cn'
+				direction="inout" />
+			<mapping soffidAttribute='description' systemAttribute='description'
+				direction="inout" />
+		</object>
+
+		<object systemObject="group" soffidObject="group">
+			<mapping soffidAttribute='"cn=Groups,dc=soffid,dc=org"' systemAttribute='baseDn'
+				direction="out" />
+			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
+				direction="out" />
+			<mapping soffidAttribute='name' systemAttribute='cn'
+				direction="inout" />
+			<mapping soffidAttribute='description' systemAttribute='description'
+				direction="inout" />
+		</object>
+
+	</agent>
 </seuServerPlugin>
