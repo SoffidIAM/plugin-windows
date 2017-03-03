@@ -384,7 +384,7 @@ public class WindowsNTAgent extends Agent implements SharedFolderMgr, AccessLogM
     public Collection<LogEntry> getLogFromDate(Date From) throws java.rmi.RemoteException,
             es.caib.seycon.ng.exception.InternalErrorException {
         // System.out.println ("Recogiendo logs");
-        if (clustered)
+        if (clustered || File.pathSeparatorChar != '\\')
             return null;
         try {
             int numLineas;
