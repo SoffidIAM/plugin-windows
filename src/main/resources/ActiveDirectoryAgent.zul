@@ -46,5 +46,27 @@
 				</listitem>
 			</listbox>
 		</row>
+		<row>
+			<input_etiqueta value="Accepted certificates" />
+			<listbox bind="@param8" mold="select"  disabled="{!canModifyAgent}" width="100px">
+				<listitem value="false">
+					<listcell label="Only trusted certificates"/>
+				</listitem>
+				<listitem value="true">
+					<listcell label="Any (insecure)"/>
+				</listitem>
+			</listbox>
+		</row>
+		<row>
+			<input_etiqueta value="Follow referrals" />
+			<listbox bind="@param9" mold="select"  disabled="{!canModifyAgent}" width="100px">
+				<listitem value="false">
+					<listcell label="Don't"/>
+				</listitem>
+				<listitem value="true">
+					<listcell label="Yes"/>
+				</listitem>
+			</listbox>
+		</row>
 	</rows>
 </grid>
