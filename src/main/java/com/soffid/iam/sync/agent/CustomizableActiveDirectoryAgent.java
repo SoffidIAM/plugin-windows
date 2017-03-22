@@ -217,7 +217,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		trustEverything = "true".equals(getDispatcher().getParam8());
 		followReferrals = !"false".equals(getDispatcher().getParam9());
 
-		log.debug("Started ActiveDirectoryAgent improved user=" + loginDN
+		log.debug("Started ActiveDirectoryAgent user=" + loginDN
 				+ " pass=" + password + "(" + password.getPassword() + ")",
 				null, null);
 		try {
@@ -238,6 +238,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		pool.setPassword(password);
 		pool.setAlwaysTrust(trustEverything);
 		pool.setFollowReferrals(followReferrals);
+		pool.setDebug (debugEnabled);
+		pool.setLog(log);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			pool.getConnection();

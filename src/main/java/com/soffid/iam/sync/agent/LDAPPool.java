@@ -19,6 +19,9 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.apache.commons.logging.Log;
+import org.slf4j.Logger;
+
 import com.novell.ldap.LDAPAuthHandler;
 import com.novell.ldap.LDAPAuthProvider;
 import com.novell.ldap.LDAPConnection;
@@ -42,7 +45,25 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	private String ldapHosts[];
 	private boolean alwaysTrust;
 	private boolean followReferrals = true;
+	private boolean debug = false;
+	private Logger log;
 	
+	public Logger getLog() {
+		return log;
+	}
+
+	public void setLog(Logger log2) {
+		this.log = log2;
+	}
+
+	public boolean isDebug() {
+		return debug;
+	}
+
+	public void setDebug(boolean debug) {
+		this.debug = debug;
+	}
+
 	public String getLdapHost() {
 		return ldapHost;
 	}
@@ -137,15 +158,24 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	protected LDAPConnection createConnection(String host) throws Exception {
 		LDAPJSSESecureSocketFactory ldapSecureSocketFactory;
+
+		SSLContext ctx = SSLContext.getInstance("TLS"); //$NON-NLS-1$
+
 		if (alwaysTrust)
 		{
-	        SSLContext ctx = SSLContext.getInstance("TLS"); //$NON-NLS-1$
-
 	        ctx.init(new KeyManager[0], new TrustManager[] { new AlwaysTrustManager() }, null);
-	        ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory (ctx.getSocketFactory());
+		}
+		
+		if (debug)
+		{
+			DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
+			if (log != null)
+				factory.setLog(log);
+			ldapSecureSocketFactory = factory;
+			
 		}
 		else
-			ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory();
+			ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
 		
 		LDAPConnection conn = new LDAPConnection(ldapSecureSocketFactory);
 
