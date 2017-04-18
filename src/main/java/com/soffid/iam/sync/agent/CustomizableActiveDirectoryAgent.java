@@ -97,7 +97,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	static HashMap<String, LDAPPool> pools = new HashMap<String, LDAPPool>();
 
-	private static final String SAM_ACCOUNT_NAME_ATTRIBUTE = "sAMAccountName";
+	protected static final String SAM_ACCOUNT_NAME_ATTRIBUTE = "sAMAccountName";
 
 	final static int ADS_UF_SCRIPT = 0x1;
 
@@ -155,9 +155,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	/** Version del servidor LDAP */
 	int ldapVersion = LDAPConnection.LDAP_V3;
 	/** Usuario root de conexión LDAP */
-	String loginDN;
+	protected String loginDN;
 	/** Password del usuario administrador cn=root,dc=caib,dc=es */
-	Password password;
+	protected Password password;
 	/** HOST donde se aloja LDAP */
 	String ldapHost;
 	/** ofuscador de claves SHA */
@@ -171,15 +171,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	long fin;
 	int usuarios = 0;
 
-	private String passwordAttribute;
+	protected String passwordAttribute;
 
-	private String hashType;
+	protected String hashType;
 
-	private String passwordPrefix;
+	protected String passwordPrefix;
 
-	private Collection<ExtensibleObjectMapping> objectMappings;
+	protected Collection<ExtensibleObjectMapping> objectMappings;
 
-	private String baseDN;
+	protected String baseDN;
 
 	protected boolean debugEnabled;
 	// --------------------------------------------------------------
@@ -187,6 +187,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	private boolean trustEverything;
 
 	private boolean followReferrals;
+
+	protected boolean useSsl = true;
 
 	/**
 	 * Constructor
@@ -199,6 +201,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	 */
 	public CustomizableActiveDirectoryAgent() throws RemoteException {
 	}
+	
 
 	@Override
 	public void init() throws InternalErrorException {
@@ -230,6 +233,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			pool = new LDAPPool();
 			pools.put(getCodi(), pool);
 		}
+		pool.setUseSsl(useSsl );
 		pool.setBaseDN(baseDN);
 		pool.setLdapHost(ldapHost);
 		pool.setLdapPort(ldapPort);
@@ -326,7 +330,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
-	private void performPasswordChange(LDAPEntry ldapUser, String accountName,
+	protected void performPasswordChange(LDAPEntry ldapUser, String accountName,
 			Password password, boolean mustchange, boolean delegation,
 			boolean replacePassword) throws Exception {
 		ArrayList<LDAPModification> modList = new ArrayList<LDAPModification>();
@@ -827,7 +831,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 				LDAPEntry entry;
 				entry = findSamAccount(user);
-				conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
+				if (useSsl)
+					conn = new LDAPConnection(new LDAPJSSESecureSocketFactory());
+				else
+					conn = new LDAPConnection();
 				conn.connect(host, ldapPort);
 				conn.bind(ldapVersion, entry.getDN(), password.getPassword()
 						.getBytes("UTF8"));
@@ -960,10 +967,18 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							while (search.hasMore()) {
 								try {
 									LDAPEntry entry = search.next();
+									
+									String accountName = 
+										(String) objectTranslator
+											.generateAttribute("accountName", 
+												new LDAPExtensibleObject(mapping.getSystemObject(), entry),
+												mapping);
 
-									accounts.add(entry.getAttribute(
-											SAM_ACCOUNT_NAME_ATTRIBUTE)
-											.getStringValue());
+									if (accountName == null)
+										accountName = entry.getAttribute(
+												SAM_ACCOUNT_NAME_ATTRIBUTE)
+												.getStringValue().toLowerCase();
+									accounts.add(accountName);
 								} catch (LDAPReferralException e) {
 								}
 							}
@@ -1023,17 +1038,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	public ExtensibleObject parseEntry(LDAPEntry entry, ObjectMapping mapping) {
-		ExtensibleObject eo = new ExtensibleObject();
-		eo.setAttribute("dn", entry.getDN());
-		eo.setObjectType(mapping.getSystemObject());
-		for (Object obj : entry.getAttributeSet()) {
-			LDAPAttribute att = (LDAPAttribute) obj;
-			if (att.getStringValueArray().length == 1)
-				eo.setAttribute(att.getName(), att.getStringValue());
-			else
-				eo.setAttribute(att.getName(), att.getStringValueArray());
-		}
-		return eo;
+		return new LDAPExtensibleObject(mapping.getSystemObject(), entry);
 	}
 
 	public Usuari getUserInfo(String userAccount) throws RemoteException,
@@ -1173,10 +1178,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							while (search.hasMore()) {
 								try {
 									LDAPEntry entry = search.next();
+									String accountName = 
+											(String) objectTranslator
+												.generateAttribute("accountName", 
+													new LDAPExtensibleObject(mapping.getSystemObject(), entry),
+													mapping);
 
-									roles.add(entry.getAttribute(
-											SAM_ACCOUNT_NAME_ATTRIBUTE)
-											.getStringValue());
+									if (accountName == null)
+										accountName = entry.getAttribute(
+												SAM_ACCOUNT_NAME_ATTRIBUTE)
+												.getStringValue().toLowerCase();
+									roles.add(accountName);
 								} catch (LDAPReferralException e) {
 								}
 							}
@@ -2134,9 +2146,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 
 			for (ExtensibleObject ldapObject : objects) {
+				if (debugEnabled)
+				{
+					debugObject("LDAP object", ldapObject, "  ");
+				}
 				ExtensibleObjects parsedObjects = objectTranslator
 						.parseInputObjects(ldapObject);
 				for (ExtensibleObject object : parsedObjects.getObjects()) {
+					if (debugEnabled)
+					{
+						debugObject("Soffid object", object, "  ");
+					}
 					Usuari user = vom.parseUsuari(object);
 					if (user != null) {
 						AuthoritativeChange change = new AuthoritativeChange();
