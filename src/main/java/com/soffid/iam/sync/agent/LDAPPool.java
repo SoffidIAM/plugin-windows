@@ -28,6 +28,7 @@ import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
+import com.novell.ldap.LDAPSocketFactory;
 
 import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.config.Config;
@@ -46,6 +47,22 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	private boolean alwaysTrust;
 	private boolean followReferrals = true;
 	private boolean debug = false;
+	
+	public boolean isUseSsl() {
+		return useSsl;
+	}
+
+	public void setUseSsl(boolean useSsl) {
+		if (this.useSsl != useSsl)
+		{
+			this.useSsl = useSsl;
+			reconfigure();
+		}
+			
+	}
+
+	private boolean useSsl = true;
+	
 	private Logger log;
 	
 	public Logger getLog() {
@@ -157,28 +174,35 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	}
 
 	protected LDAPConnection createConnection(String host) throws Exception {
-		LDAPJSSESecureSocketFactory ldapSecureSocketFactory;
-
-		SSLContext ctx = SSLContext.getInstance("TLS"); //$NON-NLS-1$
-
-		if (alwaysTrust)
+		LDAPConnection conn;
+		if (useSsl)
 		{
-	        ctx.init(new KeyManager[0], new TrustManager[] { new AlwaysTrustManager() }, null);
-		}
-		
-		if (debug)
-		{
-			DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
-			if (log != null)
-				factory.setLog(log);
-			ldapSecureSocketFactory = factory;
 			
-		}
-		else
-			ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
-		
-		LDAPConnection conn = new LDAPConnection(ldapSecureSocketFactory);
+			LDAPSocketFactory ldapSecureSocketFactory = null;
 
+
+			SSLContext ctx = SSLContext.getInstance("TLS"); //$NON-NLS-1$
+	
+			if (alwaysTrust)
+			{
+		        ctx.init(new KeyManager[0], new TrustManager[] { new AlwaysTrustManager() }, null);
+			}
+			
+			if (debug)
+			{
+				DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
+				if (log != null)
+					factory.setLog(log);
+				ldapSecureSocketFactory = factory;
+				
+			}
+			else
+				ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
+			conn = new LDAPConnection(ldapSecureSocketFactory);
+		} else  {
+			conn = new LDAPConnection();
+		}
+		
 		try 
 		{
 			LDAPConstraints constraints = conn.getConstraints();
