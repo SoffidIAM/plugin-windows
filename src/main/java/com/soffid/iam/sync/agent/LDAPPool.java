@@ -211,6 +211,10 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			{
 				public LDAPAuthProvider getAuthProvider (String host, int port)
 				{
+					if (debug)
+						log.info("Sending authentication credentials "+
+								loginDN+ ", " + baseDN+
+								" to "+host);
 					try
 					{
 						return new LDAPAuthProvider(loginDN+ ", " + baseDN, password.getPassword()
@@ -225,8 +229,11 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			});
 			conn.setConstraints(constraints);
 			conn.connect(host, ldapPort);
-			conn.bind(ldapVersion, loginDN + ", " + baseDN, password.getPassword()
+			String user = loginDN.toLowerCase().contains(baseDN.toLowerCase()) || loginDN.contains("\\") ? loginDN 
+				: loginDN + ", " + baseDN;
+			conn.bind(ldapVersion, user, password.getPassword()
 					.getBytes("UTF8"));
+			conn.setConstraints(constraints);
 		}
 		catch (UnsupportedEncodingException e)
 		{

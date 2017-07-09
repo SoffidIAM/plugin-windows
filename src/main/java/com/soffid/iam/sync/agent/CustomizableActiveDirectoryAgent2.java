@@ -87,6 +87,7 @@ public class CustomizableActiveDirectoryAgent2 extends
 						rg.setRolName(group);
 						rg.setOwnerAccountName(user);
 						rg.setOwnerDispatcher(getCodi());
+						rg.setDispatcher(getCodi());
 						try
 						{
 							Rol ri = getServer().getRoleInfo(group, getDispatcher().getCodi());

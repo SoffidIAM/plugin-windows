@@ -64,7 +64,7 @@
 				systemAttribute='mail' direction="out" />
 			<mapping soffidAttribute='primaryGroup' systemAttribute='departmentNumber'
 				direction="out" />
-			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='profileServer.equals("null") ? null : "\\\\"+profileServer+"\\PROFILES\\"+accountName'
 				systemAttribute='profilePath' direction='out'/>
@@ -75,7 +75,7 @@
 		</object>
 
 		<object systemObject="account" soffidObject="account">
-			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
 				direction="out" />
@@ -89,8 +89,8 @@
 			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
 				direction="out" />
 			<mapping
-				soffidAttribute='"cn=Roles,dc=soffid,dc=org"'
-				systemAttribute='baseDn' direction="out" />
+				soffidAttribute='"ou=Roles"'
+				systemAttribute='relativeBaseDn' direction="out" />
 			<mapping soffidAttribute='name' systemAttribute='cn'
 				direction="inout" />
 			<mapping soffidAttribute='description' systemAttribute='description'
@@ -98,7 +98,7 @@
 		</object>
 
 		<object systemObject="group" soffidObject="group">
-			<mapping soffidAttribute='"cn=Groups,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Groups"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
 				direction="out" />
@@ -134,7 +134,7 @@
 				systemAttribute='mail' direction="out" />
 			<mapping soffidAttribute='primaryGroup' systemAttribute='departmentNumber'
 				direction="out" />
-			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='profileServer.equals("null") ? null : "\\\\"+profileServer+"\\PROFILES\\"+accountName'
 				systemAttribute='profilePath' direction='out'/>
@@ -145,7 +145,7 @@
 		</object>
 
 		<object systemObject="account" soffidObject="account">
-			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
 				direction="out" />
@@ -159,8 +159,8 @@
 			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
 				direction="out" />
 			<mapping
-				soffidAttribute='"cn=Roles,dc=soffid,dc=org"'
-				systemAttribute='baseDn' direction="out" />
+				soffidAttribute='"ou=Roles"'
+				systemAttribute='relativeBaseDn' direction="out" />
 			<mapping soffidAttribute='name' systemAttribute='cn'
 				direction="inout" />
 			<mapping soffidAttribute='description' systemAttribute='description'
@@ -168,7 +168,7 @@
 		</object>
 
 		<object systemObject="group" soffidObject="group">
-			<mapping soffidAttribute='"cn=Groups,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Groups"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
 				direction="out" />
@@ -204,7 +204,7 @@
 				systemAttribute='mail' direction="out" />
 			<mapping soffidAttribute='primaryGroup' systemAttribute='departmentNumber'
 				direction="out" />
-			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='profileServer.equals("null") ? null : "\\\\"+profileServer+"\\PROFILES\\"+accountName'
 				systemAttribute='profilePath' direction='out'/>
@@ -215,7 +215,7 @@
 		</object>
 
 		<object systemObject="account" soffidObject="account">
-			<mapping soffidAttribute='"cn=Users,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
 				direction="out" />
@@ -229,8 +229,8 @@
 			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
 				direction="out" />
 			<mapping
-				soffidAttribute='"cn=Roles,dc=soffid,dc=org"'
-				systemAttribute='baseDn' direction="out" />
+				soffidAttribute='"ou=Roles"'
+				systemAttribute='relativeBaseDn' direction="out" />
 			<mapping soffidAttribute='name' systemAttribute='cn'
 				direction="inout" />
 			<mapping soffidAttribute='description' systemAttribute='description'
@@ -238,7 +238,7 @@
 		</object>
 
 		<object systemObject="group" soffidObject="group">
-			<mapping soffidAttribute='"cn=Groups,dc=soffid,dc=org"' systemAttribute='baseDn'
+			<mapping soffidAttribute='"cn=Groups"' systemAttribute='relativeBaseDn'
 				direction="out" />
 			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
 				direction="out" />
