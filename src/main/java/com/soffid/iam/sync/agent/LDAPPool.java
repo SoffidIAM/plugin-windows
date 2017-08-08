@@ -162,6 +162,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			try {
 				return createConnection(host);
 			} catch (Exception e) {
+				log.info("Error connecting to LDAP server "+host+": ", e);
 				lastException = e;
 			}
 		}
