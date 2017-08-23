@@ -32,10 +32,13 @@ public class DebugLDAPSecureSocketFactory extends LDAPJSSESecureSocketFactory {
 	@Override
 	public Socket createSocket(String host, int port) throws IOException,
 			UnknownHostException {
-		log.info("Trying to connect to "+host+":"+port);
-		Socket socket = super.createSocket(host, port);
-		log.info("Connected to "+host+":"+port);
-		return socket;
+		try {
+			Socket socket = super.createSocket(host, port);
+			return socket;
+		} catch (IOException e) {
+			System.out.println("Error connecting to "+host+":"+port+" "+e.toString());
+			throw e;
+		}
 	}
 
 }

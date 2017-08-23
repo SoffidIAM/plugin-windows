@@ -54,7 +54,24 @@ public class CustomizableNativeActiveDirectoryAgent extends
 			throw new InternalErrorException("This connector is only supported on Windows servers");
 		
 		try {
-			LDAPEntry entry = pool.getConnection().read(loginDN+","+baseDN);
+			LDAPEntry entry;
+			if (loginDN.contains("\\"))
+			{
+				ExtensibleObject eo = new ExtensibleObject();
+				eo.setObjectType(SoffidObjectType.OBJECT_ACCOUNT.getValue());
+				eo.setAttribute("objectClass", "user");
+				entry = searchSamAccount(eo, loginDN);
+			}
+			else {
+				String dn = loginDN.toLowerCase().endsWith(baseDN.toLowerCase()) ? loginDN: loginDN+","+baseDN;
+				String domain = searchDomainForDN(dn);
+				LDAPConnection conn = getConnection(domain);
+				try {
+					entry = conn.read(dn);
+				} finally {
+					returnConnection(domain);
+				}
+			}
 			if (entry == null)
 				throw new InternalErrorException("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server");
 
@@ -73,8 +90,6 @@ public class CustomizableNativeActiveDirectoryAgent extends
 		} catch (Exception e) {
 			throw new InternalErrorException(
 					"Cannot connect to active directory", e);
-		} finally {
-			pool.returnConnection();
 		}
 		
 		
