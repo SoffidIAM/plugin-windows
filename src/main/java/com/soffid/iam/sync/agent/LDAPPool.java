@@ -64,7 +64,16 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	private boolean useSsl = true;
 	
 	private Logger log;
+	private LDAPAuthHandler ldapAuthHandler;
 	
+	public LDAPAuthHandler getLdapAuthHandler() {
+		return ldapAuthHandler;
+	}
+
+	public void setLdapAuthHandler(LDAPAuthHandler ldapAuthHandler) {
+		this.ldapAuthHandler = ldapAuthHandler;
+	}
+
 	public Logger getLog() {
 		return log;
 	}
@@ -208,11 +217,11 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		{
 			LDAPConstraints constraints = conn.getConstraints();
 			constraints.setReferralFollowing(followReferrals);
-			constraints.setReferralHandler(new LDAPAuthHandler()
+			ldapAuthHandler = new LDAPAuthHandler()
 			{
 				public LDAPAuthProvider getAuthProvider (String host, int port)
 				{
-					if (debug)
+					if (debug && false)
 						log.info("Sending authentication credentials "+
 								loginDN+ ", " + baseDN+
 								" to "+host);
@@ -227,12 +236,11 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 								.getBytes());
 					}
 				}
-			});
+			};
+			constraints.setReferralHandler(ldapAuthHandler);
 			conn.setConstraints(constraints);
 			conn.connect(host, ldapPort);
-			String user = loginDN.toLowerCase().contains(baseDN.toLowerCase()) || loginDN.contains("\\") ? loginDN 
-				: loginDN + ", " + baseDN;
-			conn.bind(ldapVersion, user, password.getPassword()
+			conn.bind(ldapVersion, loginDN, password.getPassword()
 					.getBytes("UTF8"));
 			conn.setConstraints(constraints);
 		}
@@ -243,7 +251,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		}
 		catch (LDAPException e)
 		{
-			throw new InternalErrorException("Failed to connect to LDAP server "+host+": ("
+			throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
 					+ loginDN + "/" + password.getPassword() + ")" + e.toString(), e);
 		}
 		return (conn);
