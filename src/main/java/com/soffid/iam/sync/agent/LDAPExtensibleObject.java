@@ -5,8 +5,10 @@ import java.nio.ByteOrder;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.UUID;
 
 import com.novell.ldap.LDAPAttribute;
+import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPEntry;
 
 import es.caib.seycon.ng.sync.intf.ExtensibleObject;
@@ -34,25 +36,31 @@ public class LDAPExtensibleObject extends ExtensibleObject
 	public boolean containsKey(Object key) {
 		if ("dn".equals(key))
 			return true;
+		else if ("lastLogon".equals(key))
+			return true;
 		else
 			return entry.getAttribute((String)key) != null;
 	}
 
 	private LDAPEntry entry;
+	private LDAPPool pool;
 
-	public LDAPExtensibleObject (String objectType, LDAPEntry entry)
+	public LDAPExtensibleObject (String objectType, LDAPEntry entry, LDAPPool sourcePool)
 	{
 		super();
 		this.entry = entry;
+		this.pool = sourcePool;
 		setObjectType(objectType);
 	}
 
 	@Override
 	public Object getAttribute (String attribute)
 	{
-		
 		if ("dn".equals(attribute))
 			return entry.getDN();
+		
+		if ("lastLogon".equals(attribute))
+			return calculateLastLogon ();
 		
 		LDAPAttribute att = entry.getAttribute(attribute);
 		if (att == null)
@@ -70,15 +78,61 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		{
 			return parseSid(att.getByteValue());
 		}
+		else if (att.getName().equalsIgnoreCase("objectGUID"))
+		{
+			return parseGUID(att.getByteValue());
+		}
 		else if (att.getStringValueArray().length == 1)
 			return att.getStringValue();
 		else
 			return att.getStringValueArray();
 	}
 
-    private final static int MASK_8_BIT = 0xff;
-    private final static long MASK_32_BIT = 0xffffffffL;
-    private final static long MASK_48_BIT = 0xffffffffffffL;
+	private String parseGUID(byte[] byteValue) {
+		return UUID.nameUUIDFromBytes(byteValue).toString();
+	}
+
+	Long lastLogon = null;
+    private String calculateLastLogon() {
+    	if (lastLogon != null)
+    		return lastLogon.toString();
+    	if (pool == null)
+    		return null;
+    	
+    	pool.getLog().info("Calculating lastLogon for "+entry.getDN());
+    	for (LDAPPool p: pool.getChildPools())
+    	{
+        	pool.getLog().info("Connecting to "+pool.getLdapHost());
+    		LDAPConnection c = null;
+    		try {
+    			c = p.getConnection();
+    			LDAPEntry entry2 = c.read(entry.getDN(), new String[] {"lastLogon"});
+    	    	LDAPAttribute lastLogonAtt = entry2.getAttribute("lastLogon");
+    	    	if (lastLogonAtt != null)
+    	    	{
+    	    		Long newLastLogon = Long.decode(lastLogonAtt.getStringValue());
+    	    		pool.getLog().info("Last logon on "+p.getLdapHost()+"="+newLastLogon);
+    	    		if (lastLogon == null || newLastLogon.compareTo(lastLogon) > 0)
+    	    			lastLogon = newLastLogon;
+    	    	}
+    		} catch (Exception e) {
+    			pool.getLog().debug("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+    		} finally {
+    			if (c != null) {
+					try {
+						p.closeConnection(c);
+					} catch (Exception e) {
+					}
+    			}
+    		}
+    	}
+    	
+    	if (lastLogon == null)
+    		return null;
+    	else
+    		return lastLogon.toString();
+    	
+	}
 
     public static String parseSid(byte[] bytes) {
         if ( bytes == null || bytes.length < 8 )
@@ -157,6 +211,12 @@ public class LDAPExtensibleObject extends ExtensibleObject
 	public int hashCode ()
 	{
 		return entry.getDN().hashCode();
+	}
+
+
+	@Override
+	public Set<String> getAttributes() {
+		return keySet();
 	}
 }
 

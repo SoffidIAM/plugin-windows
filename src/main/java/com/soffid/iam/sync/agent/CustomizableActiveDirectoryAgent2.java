@@ -92,18 +92,25 @@ public class CustomizableActiveDirectoryAgent2 extends
 						{
 							Rol ri = getServer().getRoleInfo(group, getDispatcher().getCodi());
 							if (ri != null)
-							rg.setIdRol(ri.getId());
-							rg.setInformationSystem(ri.getCodiAplicacio());
-							// Ignore group only grants
-							if (eom.getSoffidObject().equals (SoffidObjectType.OBJECT_GRANTED_GROUP) ||
-									eom.getSoffidObject().equals (SoffidObjectType.OBJECT_ALL_GRANTED_GROUP) )
-								break;
+							{
+								rg.setIdRol(ri.getId());
+								rg.setInformationSystem(ri.getCodiAplicacio());
+								// Ignore group only grants
+								if (eom.getSoffidObject().equals (SoffidObjectType.OBJECT_GRANTED_GROUP) ||
+										eom.getSoffidObject().equals (SoffidObjectType.OBJECT_ALL_GRANTED_GROUP) )
+									continue;
+							} else {
+								// Ignore role only grants
+								if (eom.getSoffidObject().equals (SoffidObjectType.OBJECT_GRANTED_ROLE) ||
+										eom.getSoffidObject().equals (SoffidObjectType.OBJECT_ALL_GRANTED_ROLES) )
+									continue;
+							}
 						} catch (UnknownRoleException e) 
 						{
 							// Ignore role only grants
 							if (eom.getSoffidObject().equals (SoffidObjectType.OBJECT_GRANTED_ROLE) ||
 									eom.getSoffidObject().equals (SoffidObjectType.OBJECT_ALL_GRANTED_ROLES) )
-								break;
+								continue;
 						}
 						ExtensibleObject soffidObject = new GrantExtensibleObject(rg, getServer());
 						
