@@ -12,6 +12,8 @@ import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.LinkedList;
+import java.util.List;
 
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
@@ -47,6 +49,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	private boolean alwaysTrust;
 	private boolean followReferrals = true;
 	private boolean debug = false;
+	private List<LDAPPool> childPools = new LinkedList<LDAPPool>();
 	
 	public boolean isUseSsl() {
 		return useSsl;
@@ -65,6 +68,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	
 	private Logger log;
 	private LDAPAuthHandler ldapAuthHandler;
+	private Long queryTimeout;
 	
 	public LDAPAuthHandler getLdapAuthHandler() {
 		return ldapAuthHandler;
@@ -238,6 +242,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 				}
 			};
 			constraints.setReferralHandler(ldapAuthHandler);
+			if (queryTimeout != null)
+				constraints.setTimeLimit(queryTimeout.intValue());
 			conn.setConstraints(constraints);
 			conn.connect(host, ldapPort);
 			conn.bind(ldapVersion, loginDN, password.getPassword()
@@ -275,6 +281,19 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	public void setFollowReferrals(boolean followReferrals) {
 		this.followReferrals = followReferrals;
+	}
+
+	public List<LDAPPool> getChildPools() {
+		return childPools;
+	}
+
+	public void setChildPools(List<LDAPPool> childPools) {
+		this.childPools = childPools;
+	}
+
+	public void setQueryTimeout(Long timeout) {
+		this.queryTimeout = timeout ;
+		
 	}
 
 }

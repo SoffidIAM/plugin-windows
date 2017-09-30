@@ -38,7 +38,9 @@ import com.novell.ldap.LDAPSearchConstraints;
 import com.novell.ldap.LDAPSearchResults;
 import com.novell.ldap.controls.LDAPPagedResultsControl;
 import com.novell.ldap.controls.LDAPPagedResultsResponse;
+import com.soffid.iam.api.AccountStatus;
 
+import es.caib.seycon.ng.comu.Account;
 import es.caib.seycon.ng.comu.Grup;
 import es.caib.seycon.ng.comu.LlistaCorreu;
 import es.caib.seycon.ng.comu.Maquina;
@@ -56,7 +58,6 @@ import es.caib.seycon.ng.sync.intf.KerberosPrincipalInfo;
 import es.caib.seycon.ng.sync.intf.MailAliasMgr;
 import es.caib.seycon.ng.sync.intf.ReconcileMgr;
 import es.caib.seycon.ng.sync.intf.RoleMgr;
-import es.caib.seycon.ng.sync.intf.UserInfo;
 import es.caib.seycon.ng.sync.intf.UserMgr;
 import es.caib.seycon.util.TimedOutException;
 import es.caib.seycon.util.TimedProcess;
@@ -227,8 +228,30 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 		usuario = searchUser(user);
 		if (usuario != null)
 		{
-			log.info("Disable user {} ", user, null);
-			disableUser(usuario);
+			Account acc = getServer().getAccountInfo(user, getDispatcher().getCodi());
+			if ( acc != null && acc.getStatus() == AccountStatus.REMOVED)
+			{
+				try
+				{
+					LDAPConnection lc = getConnection();
+					synchronized (lc)
+					{
+						String deleteDN = usuario.getDN();
+						lc.delete(deleteDN);
+					}
+				}
+				catch (LDAPException e)
+				{
+					cerrarConexion();
+					throw new InternalErrorException("Error deleting user " + user + ":"
+							+ e.toString(), e);
+				}
+			}
+			else
+			{
+				log.info("Disable user {} ", user, null);
+				disableUser(usuario);
+			}
 		}
 	}
 

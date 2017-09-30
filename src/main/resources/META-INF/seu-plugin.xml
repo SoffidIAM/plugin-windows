@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <seuServerPlugin  xmlns="http://seu.sourceforge.net/schema/serverplugin" 
-	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://seu.sourceforge.net/schema/ServerPlugin.xsd" >
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" >
 	<name>Windows plugin</name>
 	<version>${pom.version}</version>
 	<agent>
@@ -14,6 +13,7 @@
 	<agent>
 		<name>Active Directory</name>
 		<javaClass>es.caib.seycon.agent.ActiveDirectoryAgent</javaClass>
+		<javaClassV2>-</javaClassV2>
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
 		<enableAccessControl>N</enableAccessControl>
 	</agent>	
@@ -22,12 +22,14 @@
 		<javaClass>es.caib.seycon.agent.WindowsNTBDCAgent</javaClass>
 		<userInterface>WindowsAgent.zul</userInterface>
 		<enableAccessControl>N</enableAccessControl>
+		<javaClassV2>-</javaClassV2>
 	</agent>	
 	<agent>
 		<name>Windows XP</name>
 		<javaClass>es.caib.seycon.agent.WindowsNTWAgent</javaClass>
 		<userInterface>WindowsAgent.zul</userInterface>
 		<enableAccessControl>N</enableAccessControl>
+		<javaClassV2>-</javaClassV2>
 	</agent>	
 	<agent>
 		<name>Remote Windows Host</name>
@@ -44,6 +46,7 @@
 	<agent>
 		<name>Customizable Active Directory</name>
 		<javaClass>com.soffid.iam.sync.agent.CustomizableActiveDirectoryAgent</javaClass>
+		<javaClassV2>-</javaClassV2>
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
 		<enableAccessControl>false</enableAccessControl>
 		<enableAttributeMapping>true</enableAttributeMapping>
@@ -113,6 +116,7 @@
 	<agent>
 		<name>Customizable Active Directory (with triggers)</name>
 		<javaClass>com.soffid.iam.sync.agent.CustomizableActiveDirectoryAgent2</javaClass>
+		<javaClassV2>com.soffid.iam.sync.agent2.CustomizableActiveDirectoryAgent</javaClassV2>
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
 		<enableAccessControl>false</enableAccessControl>
 		<enableAttributeMapping>true</enableAttributeMapping>

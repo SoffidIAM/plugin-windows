@@ -1,4 +1,4 @@
-package com.soffid.iam.sync.agent;
+package com.soffid.iam.sync.agent2;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -29,13 +29,12 @@ import es.caib.seycon.ng.sync.intf.ExtensibleObject;
 import es.caib.seycon.ng.sync.intf.ExtensibleObjectMapping;
 import es.caib.seycon.util.TimedProcess;
 
-public class CustomizableNativeActiveDirectoryAgent extends
-		CustomizableActiveDirectoryAgent2 {
+public class CustomizableNativeActiveDirectoryAgent extends CustomizableActiveDirectoryAgent 
+{
 
 	private static final String EXE_NAME = "usradm-2.0.1.exe";
 	static final String DLL_NAME = "libwinpthread-1.dll";
 	private String suffix;
-	private String samAccountName;
 
 
 
@@ -80,24 +79,8 @@ public class CustomizableNativeActiveDirectoryAgent extends
 			if (att == null)
 				throw new InternalErrorException("It's weird, but administrator account has no sAMAccountName attribute");
 			
-			if (File.separatorChar == '/')
-			{
-				samAccountName = att.getStringValue();
-				for (String part: entry.getDN().split(","))
-				{
-					if (part.toLowerCase().startsWith("dc="))
-					{
-						samAccountName = part.substring(3)+"\\"+samAccountName;
-						break;
-					}
-						
-				}
-			} 
-			else
-			{
-				suffix = " --user \"" + att.getStringValue() + "\" --password \"" + password.getPassword()
+			suffix = " --user \"" + att.getStringValue() + "\" --password \"" + password.getPassword()
 					+ "\" -S \"" + getRealmName() + "\"";
-			} 
 			
 			File f = new File(Config.getConfig().getHomeDir(), "system/" + EXE_NAME);
 			extractSystemFile("usradm.exe", f);
