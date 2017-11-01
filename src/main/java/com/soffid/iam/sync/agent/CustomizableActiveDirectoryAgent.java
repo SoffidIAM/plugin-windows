@@ -103,7 +103,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	private static final String BASE_DN = "baseDn";
 
-	private static final String USER_ACCOUNT_CONTROL = "userAccountControl";
+	protected static final String USER_ACCOUNT_CONTROL = "userAccountControl";
 
 	static HashMap<String, LDAPPool> pools = new HashMap<String, LDAPPool>();
 
@@ -553,7 +553,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		{
 			return searchEntry(dn);
 		}
-		else if (samAccount != null && 
+		else if (samAccount != null &&
+				objectClass != null &&
 				(objectClass.equals("user") || 
 						objectClass.equals("group") ||
 						objectClass.equals("computer")))
@@ -572,7 +573,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 		queryString = queryString + ")";
 
-		for (String domain: domains.values())
+		for (String domain: domains.keySet())
 		{
 			String base = domains.get(domain);
 			if (debugEnabled)
