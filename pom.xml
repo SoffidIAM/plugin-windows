@@ -10,7 +10,7 @@
   <artifactId>windows-plugin</artifactId>
   <packaging>jar</packaging>
   <name>Windows plugin</name>
-  <version>3.4.1-SNAPSHOT</version>
+  <version>4.0.0</version>
   <dependencies>
     <dependency>
     	<groupId>com.soffid.iam.sync.w32</groupId>
