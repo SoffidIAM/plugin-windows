@@ -126,7 +126,8 @@ public class WindowsNTWAgent extends WindowsNTAgent implements UserMgr {
             int result = p.exec("usradm -i " + user + " -q");
             // Crear el usuario si no existe
             if (result != 0) {
-                result = p.exec("usradm -a \"" + user + "\" -Fe -q");
+            	Password pass = getServer().getAccountPassword(user, getDispatcher().getCodi());
+            	result = p.exec("usradm -a \"" + user + "\" -Fe -q -p \"" + pass.getPassword() + "\"");
                 if (result != 0) {
                     throw new InternalErrorException("Error creando usuario " + user);
                 }
@@ -193,7 +194,10 @@ public class WindowsNTWAgent extends WindowsNTAgent implements UserMgr {
             int result = p.exec("usradm -i " + user + " -q");
             // Crear el usuario si no existe
             if (result != 0) {
-                result = p.exec("usradm -a \"" + user + "\" -Fe -q");
+            	Password pass = getServer().getOrGenerateUserPassword(user, getDispatcher().getCodi());
+            	String args = "usradm -a \"" + user + "\" -Fe -q -p \"" + pass.getPassword() + "\"";
+                log.info("Executing :"+args);
+				result = p.exec(args);
                 if (result != 0) {
                     throw new InternalErrorException("Error creando usuario " + user);
                 }
@@ -212,10 +216,11 @@ public class WindowsNTWAgent extends WindowsNTAgent implements UserMgr {
             }
             // Modificar sus datos
             String args = "usradm -u \"" + user + "\" -n \"" + description;
-            args = args + "\" " + user;
-            args = args + " -b";
-            // else args = args + " -Fe";
+            args = args + "\"";
+            // args = args + " -b";
+            args = args + " -Fe";
             args = args + " -q";
+            log.info("Executing :"+args);
             result = p.exec(args);
             if (result != 0)
                 throw new InternalErrorException("Error creando usuario " + user);
@@ -229,5 +234,4 @@ public class WindowsNTWAgent extends WindowsNTAgent implements UserMgr {
             throw new InternalErrorException("Error intern", e);
         }
 	}
-
 }

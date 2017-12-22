@@ -232,23 +232,6 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 		}
 	}
 
-	private void parseCustomObject(Collection<AuthoritativeChange> changes, ExtensibleObject object)
-			throws InternalErrorException {
-		CustomObject obj = vom.parseCustomObject(object);
-		if (obj != null) {
-			AuthoritativeChange change = new AuthoritativeChange();
-
-			AuthoritativeChangeIdentifier id = new AuthoritativeChangeIdentifier();
-			change.setId(id);
-			id.setChangeId(null);
-			id.setEmployeeId("C:"+obj.getName());
-			id.setDate(new Date());
-
-			change.setObject(obj);
-
-			changes.add(change);
-		}
-	}
 
 	public ExtensibleObject getNativeObject(SoffidObjectType type, String object1, String object2) throws InternalErrorException {
 		try {
@@ -327,6 +310,23 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 			throw e;
 		} catch (Exception e) {
 			throw new InternalErrorException("Error retrieving object information", e);
+		}
+	}
+
+	protected void parseCustomObject(Collection<AuthoritativeChange> changes, ExtensibleObject object)
+			throws InternalErrorException {
+		CustomObject obj = vom.parseCustomObject(object);
+		if (obj != null) {
+			AuthoritativeChange change = new AuthoritativeChange();
+
+			AuthoritativeChangeIdentifier id = new AuthoritativeChangeIdentifier();
+			change.setId(id);
+			id.setChangeId(null);
+			id.setEmployeeId("group:"+obj.getName());
+			id.setDate(new Date());
+
+			change.setObject(obj);
+			changes.add(change);
 		}
 	}
 }

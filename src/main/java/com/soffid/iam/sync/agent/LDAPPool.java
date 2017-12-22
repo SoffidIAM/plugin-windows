@@ -195,11 +195,15 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			LDAPSocketFactory ldapSecureSocketFactory = null;
 
 
-			SSLContext ctx = SSLContext.getInstance("TLS"); //$NON-NLS-1$
-	
+			SSLContext ctx;
 			if (alwaysTrust)
 			{
+				ctx = SSLContext.getInstance("TLS"); //$NON-NLS-1$
 		        ctx.init(new KeyManager[0], new TrustManager[] { new AlwaysTrustManager() }, null);
+			}
+			else
+			{
+				ctx = SSLContext.getDefault();
 			}
 			
 			if (debug)

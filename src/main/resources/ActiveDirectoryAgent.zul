@@ -79,5 +79,16 @@
 				</listitem>
 			</listbox>
 		</row>
+		<row>
+			<input_etiqueta value="Create OUs when needed" />
+			<listbox bind="@param5" mold="select"  disabled="{!canModifyAgent}" width="100px">
+				<listitem value="true">
+					<listcell label="Yes"/>
+				</listitem>
+				<listitem value="false">
+					<listcell label="No"/>
+				</listitem>
+			</listbox>
+		</row>
 	</rows>
 </grid>
