@@ -49,7 +49,8 @@ public class CustomizableNativeActiveDirectoryAgent extends
 				ExtensibleObject eo = new ExtensibleObject();
 				eo.setObjectType(SoffidObjectType.OBJECT_ACCOUNT.getValue());
 				eo.setAttribute("objectClass", "user");
-				entry = searchSamAccount(eo, loginDN);
+				String s = loginDN.substring(loginDN.indexOf('\\')+1);
+				entry = searchSamAccount(eo, s);
 			}
 			else {
 				String dn = loginDN.toLowerCase().endsWith(baseDN.toLowerCase()) ? loginDN: loginDN+","+baseDN;

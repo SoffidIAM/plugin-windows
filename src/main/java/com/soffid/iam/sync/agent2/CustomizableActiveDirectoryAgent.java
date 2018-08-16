@@ -61,7 +61,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 				.generateObjects(sourceObject);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			updateObjects(obj.getName(), objects, sourceObject);
+			updateObjects(obj.getName(), obj.getName(), objects, sourceObject);
 		} catch (InternalErrorException e) {
 			throw e;
 		} catch (Exception e) {
@@ -240,6 +240,11 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 							null :
 							object1;
 			ExtensibleObject sourceObject = getExtensibleObject(type, object1, object2);
+			
+			if (debugEnabled)
+			{
+				debugObject("Searching for object", sourceObject, "  ");
+			}
 
 			ExtensibleObjects targetObjects = new ExtensibleObjects();
 			for (ExtensibleObjectMapping mapping: objectMappings)
@@ -249,11 +254,15 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 	    			ExtensibleObject to = objectTranslator.generateObject(sourceObject, mapping,  true);
 	    			if (to != null)
 	    			{
+	    				if (debugEnabled)
+	    					log.info("Searching for "+samAccountName);
 	    				LDAPEntry entry = searchSamAccount(to, samAccountName);
 	    				if (entry != null)
 	    				{
 	    					ExtensibleObject s = new LDAPExtensibleObject(to.getObjectType(), entry,
 	    							getEntryPool(entry));
+		    				if (debugEnabled)
+		    					debugEntry("Found AD object", entry.getDN(), entry.getAttributeSet());
 	    					ExtensibleObject r = new ExtensibleObject();
 	    					r.setObjectType(to.getObjectType());
 	    					for (LDAPAttribute key: (Collection<LDAPAttribute>)entry.getAttributeSet())

@@ -7,8 +7,27 @@
 	<agent>
 		<name>Active Directory Only Passwords</name>
 		<javaClass>es.caib.seycon.agent.ActiveDirectoryOnlyPasswordsAgent</javaClass>
+		<javaClassV2>com.soffid.iam.sync.agent2.SSOActiveDirectoryAgent</javaClassV2>
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
-		<enableAccessControl>N</enableAccessControl>
+		<enableAccessControl>false</enableAccessControl>
+		<enableAttributeMapping>true</enableAttributeMapping>
+		<authoritativeSource>true</authoritativeSource>
+		<object systemObject="user" soffidObject="user">
+			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
+				direction="out" />
+			<mapping soffidAttribute='accountName' systemAttribute='sAMAccountName'
+				direction="inout" />
+		</object>
+
+		<object systemObject="account" soffidObject="account">
+			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
+				direction="out" />
+			<mapping soffidAttribute='accountName' systemAttribute='sAMAccountName'
+				direction="inout" />
+			<mapping soffidAttribute='accountDescription' systemAttribute='cn'
+				direction="inout" />
+		</object>
+
 	</agent>
 	<agent>
 		<name>Active Directory</name>
@@ -187,6 +206,7 @@
 	<agent>
 		<name>Customizable Active Directory (without SSL)</name>
 		<javaClass>com.soffid.iam.sync.agent.CustomizableNativeActiveDirectoryAgent</javaClass>
+		<javaClassV2>com.soffid.iam.sync.agent2.CustomizableNativeActiveDirectoryAgent</javaClassV2>
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
 		<enableAccessControl>false</enableAccessControl>
 		<enableAttributeMapping>true</enableAttributeMapping>
