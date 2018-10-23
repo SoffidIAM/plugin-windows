@@ -5,49 +5,31 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
 import java.util.Stack;
 
-import org.omg.CORBA.OBJECT_NOT_EXIST;
-
 import com.novell.ldap.LDAPAttribute;
-import com.novell.ldap.LDAPConnection;
-import com.novell.ldap.LDAPControl;
 import com.novell.ldap.LDAPEntry;
 import com.novell.ldap.LDAPException;
-import com.novell.ldap.LDAPReferralException;
-import com.novell.ldap.LDAPSearchConstraints;
-import com.novell.ldap.LDAPSearchResults;
-import com.novell.ldap.controls.LDAPPagedResultsControl;
-import com.novell.ldap.controls.LDAPPagedResultsResponse;
-import com.soffid.iam.api.AccountStatus;
 import com.soffid.iam.api.CustomObject;
 import com.soffid.iam.api.Group;
 import com.soffid.iam.sync.agent.CustomizableActiveDirectoryAgent2;
 import com.soffid.iam.sync.agent.LDAPExtensibleObject;
-import com.soffid.iam.sync.agent.CustomizableActiveDirectoryAgent.LdapSearch;
 import com.soffid.iam.sync.intf.CustomObjectMgr;
 
-import es.caib.seycon.ng.comu.Account;
 import es.caib.seycon.ng.comu.Grup;
 import es.caib.seycon.ng.comu.SoffidObjectType;
 import es.caib.seycon.ng.comu.Usuari;
 import es.caib.seycon.ng.exception.InternalErrorException;
-import es.caib.seycon.ng.exception.UnknownUserException;
 import es.caib.seycon.ng.sync.engine.Watchdog;
-import es.caib.seycon.ng.sync.engine.extobj.AccountExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.CustomExtensibleObject;
-import es.caib.seycon.ng.sync.engine.extobj.GroupExtensibleObject;
-import es.caib.seycon.ng.sync.engine.extobj.UserExtensibleObject;
 import es.caib.seycon.ng.sync.intf.AuthoritativeChange;
 import es.caib.seycon.ng.sync.intf.AuthoritativeChangeIdentifier;
 import es.caib.seycon.ng.sync.intf.ExtensibleObject;
 import es.caib.seycon.ng.sync.intf.ExtensibleObjectMapping;
 import es.caib.seycon.ng.sync.intf.ExtensibleObjects;
-import es.caib.seycon.util.Base64;
 
 public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirectoryAgent2 implements CustomObjectMgr {
 
@@ -114,40 +96,43 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 					}
 				}
 			}
-			LdapSearch currentSearch = null;
-			do
+			while (changes.isEmpty())
 			{
-				if (searches.isEmpty())
-					return changes;
-				LdapSearch s = searches.peek();
-				if (s.finished)
+				LdapSearch currentSearch = null;
+				do
 				{
-					if (debugEnabled)
-						log.info("Finished search on domain "+s.domain);
-					searches.pop();
-				}
-				else
-					currentSearch = s;
-			} while (currentSearch == null);
-				
-			LinkedList<ExtensibleObject> objects = getLdapObjects(currentSearch);
-
-			for (ExtensibleObject ldapObject : objects) 
-			{
-				if (debugEnabled)
+					if (searches.isEmpty())
+						return changes;
+					LdapSearch s = searches.peek();
+					if (s.finished)
+					{
+						if (debugEnabled)
+							log.info("Finished search on domain "+s.domain);
+						searches.pop();
+					}
+					else
+						currentSearch = s;
+				} while (currentSearch == null);
+					
+				LinkedList<ExtensibleObject> objects = getLdapObjects(currentSearch);
+	
+				for (ExtensibleObject ldapObject : objects) 
 				{
-					debugObject("LDAP object", ldapObject, "  ");
-				}
-				ExtensibleObjects parsedObjects = objectTranslator
-						.parseInputObjects(ldapObject);
-				for (ExtensibleObject object : parsedObjects.getObjects()) {
 					if (debugEnabled)
 					{
-						debugObject("Soffid object", object, "  ");
+						debugObject("LDAP object", ldapObject, "  ");
 					}
-					parseUser(changes, object);
-					parseGroup(changes, object);
-					parseCustomObject(changes, object);
+					ExtensibleObjects parsedObjects = objectTranslator
+							.parseInputObjects(ldapObject);
+					for (ExtensibleObject object : parsedObjects.getObjects()) {
+						if (debugEnabled)
+						{
+							debugObject("Soffid object", object, "  ");
+						}
+						parseUser(changes, object);
+						parseGroup(changes, object);
+						parseCustomObject(changes, object);
+					}
 				}
 			}
 		} catch (LDAPException e) {
