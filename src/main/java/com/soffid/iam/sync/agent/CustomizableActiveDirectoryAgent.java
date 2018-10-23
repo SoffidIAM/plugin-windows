@@ -322,7 +322,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		return pool;
 	}
 
-	private void reconfigurePool(String domain, String host) {
+	private void reconfigurePool(String domain, String host) throws InternalErrorException {
 		if (debugEnabled)
 		{
 			log.info("Configuring LDAP pool "+getCodi()+"/"+domain);
@@ -347,17 +347,42 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		pool.setFollowReferrals(followReferrals);
 		pool.setDebug (debugEnabled);
 		pool.setLog(log);
+		pool.reconfigure();
 		if (getDispatcher().getTimeout() != null)
 			pool.setQueryTimeout (getDispatcher().getTimeout());
 		List<LDAPPool> children = new LinkedList<LDAPPool>();
 		try {
-			for (InetAddress ips: InetAddress.getAllByName(host))
-			{
-				children.add( createChildPool(pool.getBaseDN(), ips.getHostAddress()));
-			}
+			log.info("Resolving domain controllers for "+host);
+			
+			LDAPConnection conn = pool.getConnection();
+			LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+			LDAPSearchResults query = conn.search(domains.get(domain),
+						LDAPConnection.SCOPE_SUB, 
+						"(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))",
+						null, false,
+						constraints);
+			while (query.hasMore()) {
+				try {
+					LDAPEntry entry = query.next();
+					LDAPAttribute dnsName = entry.getAttribute("dNSHostName");
+					if (dnsName != null)
+					{
+						String hostName = dnsName.getStringValue();
+						log.info("  Found domain controller: "+hostName);
+						children.add( createChildPool(pool.getBaseDN(), hostName));
+					}
+				} catch (LDAPReferralException e)
+				{
+				}
+			}			
+
 			pool.setChildPools(children);
 		} catch (UnknownHostException e) {
 			log.warn("Error resolving host "+host, e);
+		} catch (LDAPException e1) {
+			log.warn("Error querying domain controllers ", e1);
+		} catch (Exception e2) {
+			throw new InternalErrorException("Error querying domain controllers", e2);
 		}
 	}
 
@@ -2671,39 +2696,43 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			}
 			LdapSearch currentSearch = null;
-			do
+			while ( changes.isEmpty())
 			{
-				if (searches.isEmpty())
-					return changes;
-				LdapSearch s = searches.peek();
-				if (s.finished)
+				do
 				{
-					if (debugEnabled)
-						log.info("Finished search on domain "+s.domain);
-					searches.pop();
-				}
-				else
-					currentSearch = s;
-			} while (currentSearch == null);
-				
-			LinkedList<ExtensibleObject> objects = getLdapObjects(currentSearch);
-
-			for (ExtensibleObject ldapObject : objects) 
-			{
-				if (debugEnabled)
+					if (searches.isEmpty())
+						return changes;
+					LdapSearch s = searches.peek();
+					if (s.finished)
+					{
+						if (debugEnabled)
+							log.info("Finished search on domain "+s.domain);
+						searches.pop();
+					}
+					else
+						currentSearch = s;
+				} while (currentSearch == null);
+					
+				log.info("Searching on "+currentSearch.domain);
+				LinkedList<ExtensibleObject> objects = getLdapObjects(currentSearch);
+	
+				for (ExtensibleObject ldapObject : objects) 
 				{
-					debugObject("LDAP object", ldapObject, "  ");
-				}
-				ExtensibleObjects parsedObjects = objectTranslator
-						.parseInputObjects(ldapObject);
-				for (ExtensibleObject object : parsedObjects.getObjects()) {
 					if (debugEnabled)
 					{
-						debugObject("Soffid object", object, "  ");
+						debugObject("LDAP object", ldapObject, "  ");
 					}
-					parseUser(changes, object);
-					parseGroup(changes, object);
-					parseCustomObject(changes, object);
+					ExtensibleObjects parsedObjects = objectTranslator
+							.parseInputObjects(ldapObject);
+					for (ExtensibleObject object : parsedObjects.getObjects()) {
+						if (debugEnabled)
+						{
+							debugObject("Soffid object", object, "  ");
+						}
+						parseUser(changes, object);
+						parseGroup(changes, object);
+						parseCustomObject(changes, object);
+					}
 				}
 			}
 		} catch (LDAPException e) {
