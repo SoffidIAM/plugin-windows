@@ -205,6 +205,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			
 			if (debug)
 			{
+				if (log != null)
+					log.debug("Creating LDAP connection to "+host);
 				DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
 				if (log != null)
 					factory.setLog(log);
@@ -250,6 +252,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			conn.bind(ldapVersion, loginDN, password.getPassword()
 					.getBytes("UTF8"));
 			conn.setConstraints(constraints);
+			if (debug)
+				log.info("Created connection "+conn.toString());
 		}
 		catch (UnsupportedEncodingException e)
 		{
@@ -267,12 +271,12 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	@Override
 	protected boolean isConnectionValid(LDAPConnection connection)
 			throws Exception {
-		return connection.isConnectionAlive();
+		return connection.isConnected() && connection.isConnectionAlive();
 	}
 
 	@Override
-	protected void closeConnection(LDAPConnection connection) throws Exception {
-		connection.clone();
+	protected void closeConnection(LDAPConnection connection) throws LDAPException {
+		connection.disconnect();
 	}
 
 	public void setAlwaysTrust(boolean trustEveryThing) {
