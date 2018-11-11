@@ -12,6 +12,7 @@ import java.util.Iterator;
 import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPEntry;
+import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPModification;
 
 import es.caib.seycon.ng.comu.ObjectMappingTrigger;
@@ -215,8 +216,12 @@ public class CustomizableNativeActiveDirectoryAgent extends CustomizableActiveDi
 		mods = (LDAPModification[]) modList.toArray(mods);
 		debugModifications("Modifying password ", ldapUser.getDN(), mods);
 		String domain = searchDomainForDN (ldapUser.getDN());
+		LDAPConnection conn = getConnection(domain);
 		try {
-			getConnection(domain).modify(ldapUser.getDN(), mods);
+			conn.modify(ldapUser.getDN(), mods);
+		} catch (LDAPException e) {
+			handleException(e, conn);
+			throw e;
 		} finally {
 			returnConnection(domain);
 		}

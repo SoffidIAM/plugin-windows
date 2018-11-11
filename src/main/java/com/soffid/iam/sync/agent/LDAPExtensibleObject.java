@@ -1,5 +1,6 @@
 package com.soffid.iam.sync.agent;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashSet;
@@ -11,6 +12,7 @@ import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPEntry;
 
+import es.caib.seycon.ng.exception.InternalErrorException;
 import es.caib.seycon.ng.sync.intf.ExtensibleObject;
 import es.caib.seycon.util.Base64;
 
@@ -60,8 +62,11 @@ public class LDAPExtensibleObject extends ExtensibleObject
 			return entry.getDN();
 		
 		if ("lastLogon".equals(attribute))
-			return calculateLastLogon ();
+			return calculateLastLogon (false);
 		
+		if ("lastLogonStrict".equals(attribute))
+			return calculateLastLogon (true);
+
 		LDAPAttribute att = entry.getAttribute(attribute);
 		if (att == null)
 			return null;
@@ -82,6 +87,15 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		{
 			return parseGUID(att.getByteValue());
 		}
+		else if (att.getName().equalsIgnoreCase("userParameters"))
+		{
+			try {
+				AttributesEncoder e = new AttributesEncoder(att.getByteValue());
+				return e.parse();
+			} catch (IOException e) {
+				throw new RuntimeException("Error parsing userParameters", e);
+			}
+		}
 		else if (att.getStringValueArray().length == 1)
 			return att.getStringValue();
 		else
@@ -93,7 +107,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 	}
 
 	Long lastLogon = null;
-    private String calculateLastLogon() {
+    private String calculateLastLogon(boolean fail) {
     	if (lastLogon != null)
     		return lastLogon.toString();
     	if (pool == null)
@@ -102,7 +116,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
     	pool.getLog().info("Calculating lastLogon for "+entry.getDN());
     	for (LDAPPool p: pool.getChildPools())
     	{
-        	pool.getLog().info("Connecting to "+pool.getLdapHost());
+        	pool.getLog().info("Connecting to "+p.getLdapHost());
     		LDAPConnection c = null;
     		try {
     			c = p.getConnection();
@@ -116,14 +130,11 @@ public class LDAPExtensibleObject extends ExtensibleObject
     	    			lastLogon = newLastLogon;
     	    	}
     		} catch (Exception e) {
-    			pool.getLog().debug("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+    			pool.getLog().info("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+    			if (fail)
+    				throw new RuntimeException("Error querying lastLogon attribute on "+p.getLdapHost(), e);
     		} finally {
-    			if (c != null) {
-					try {
-						p.closeConnection(c);
-					} catch (Exception e) {
-					}
-    			}
+				p.returnConnection();
     		}
     	}
     	
