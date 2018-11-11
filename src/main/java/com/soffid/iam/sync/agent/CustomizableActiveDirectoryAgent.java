@@ -279,13 +279,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		} catch (NoSuchMethodException e1) {
 		} catch (SecurityException e1) {
 		}
+		LDAPConnection conn = null;
 		try {
-			LDAPConnection conn = getConnection(mainDomain);
+			conn = getConnection(mainDomain);
 			if (multiDomain)
 			{
 				searchDomains (conn);
 			}
 		} catch (Exception e) {
+			handleException(e, conn);
 			throw new InternalErrorException(
 					"Cannot connect to active directory", e);
 		} finally {
@@ -308,7 +310,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw new InternalErrorException("Unknown LDAP pool "+domain);
 		}
 		try {
-			return pool.getConnection();
+			LDAPConnection p = pool.getConnection();
+			if (debugEnabled)
+				log.info("Using connection "+p.toString()+" (connected = "+p.isConnected()+")");
+			return p;
 		} catch (Exception e) {
 			if (debugEnabled)
 				log.info("Error connecting to "+domain);
@@ -351,10 +356,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		if (getDispatcher().getTimeout() != null)
 			pool.setQueryTimeout (getDispatcher().getTimeout());
 		List<LDAPPool> children = new LinkedList<LDAPPool>();
+		LDAPConnection conn = null;
 		try {
 			log.info("Resolving domain controllers for "+host);
 			
-			LDAPConnection conn = pool.getConnection();
+			conn = pool.getConnection();
 			LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
 			LDAPSearchResults query = conn.search(domains.get(domain),
 						LDAPConnection.SCOPE_SUB, 
@@ -381,17 +387,35 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			log.warn("Error resolving host "+host, e);
 		} catch (LDAPException e1) {
 			log.warn("Error querying domain controllers ", e1);
+			handleException (e1, conn);
 		} catch (Exception e2) {
 			throw new InternalErrorException("Error querying domain controllers", e2);
+		} finally {
+			pool.returnConnection();
 		}
 	}
 
+	protected void handleException(Exception e, LDAPConnection conn) {
+		try {
+			if (e instanceof LDAPException &&
+					conn != null && 
+					((LDAPException) e).getResultCode() == LDAPException.CONNECT_ERROR)
+			{
+				log.warn("Closing failed connection "+conn.toString());
+				conn.disconnect();
+			}
+		} catch (LDAPException e2) {
+			log.warn("Error closing connection ", e);
+		}
+	}
+
+
 	private LDAPPool createChildPool(String base, String host) {
 		LDAPPool pool = new LDAPPool();
-		pool.setUseSsl(useSsl );
+		pool.setUseSsl( false );
 		pool.setBaseDN( base );
 		pool.setLdapHost(host);
-		pool.setLdapPort(ldapPort);
+		pool.setLdapPort( LDAPConnection.DEFAULT_PORT );
 		pool.setLdapVersion(ldapVersion);
 		pool.setLoginDN(loginDN);
 		pool.setPassword(password);
@@ -559,8 +583,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		mods = (LDAPModification[]) modList.toArray(mods);
 		debugModifications("Modifying password ", ldapUser.getDN(), mods);
 		String domain = searchDomainForDN (ldapUser.getDN());
+		LDAPConnection conn = getConnection(domain);
 		try {
-			getConnection(domain).modify(ldapUser.getDN(), mods);
+			conn.modify(ldapUser.getDN(), mods);
+		} catch (Exception e) {
+			handleException(e, conn);
+			throw e;
 		} finally {
 			returnConnection(domain);
 		}
@@ -634,8 +662,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			if (debugEnabled)
 				log.info("Looking for object "+samAccount+": LDAP QUERY="
 						+ queryString.toString() + " on " + base);
+			LDAPConnection conn = getConnection(domain);
 			try {
-				LDAPConnection conn = getConnection(domain);
 				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
 				LDAPSearchResults query = conn.search(base,
 						LDAPConnection.SCOPE_SUB, queryString, null, false,
@@ -647,7 +675,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					} catch (LDAPReferralException e) {
 					}
 				}
-	
+			} catch (LDAPException e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -666,11 +696,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	 */
 	private LDAPEntry searchEntry(String dn) throws Exception {
 		String domain = searchDomainForDN(dn);
+		LDAPConnection connection = getConnection(domain);
 		try {
-			return getConnection(domain).read(dn);
+			return connection.read(dn);
 		} catch (LDAPException e) {
 			if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT)
 				return null;
+			handleException(e, connection);
 			String msg = "buscarUsuario ('" + dn
 					+ "'). Error al buscar el usuario. [" + e.getMessage()
 					+ "]";
@@ -691,11 +723,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	 */
 	private LDAPEntry searchEntry(String dn, String attributes[]) throws Exception {
 		String domain = searchDomainForDN(dn);
+		LDAPConnection connection = getConnection(domain);
 		try {
-			return getConnection(domain).read(dn, attributes);
+			return connection.read(dn, attributes);
 		} catch (LDAPException e) {
 			if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT)
 				return null;
+			handleException(e, connection);
 			String msg = "buscarUsuario ('" + dn
 					+ "'). Error al buscar el usuario. [" + e.getMessage()
 					+ "]";
@@ -799,14 +833,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			return;
 
 		boolean found = false;
+		LDAPConnection connection = getConnection(domain);
 		try {
-			getConnection(domain).read( dn );
+			connection.read( dn );
 			found = true;
 		} catch (LDAPReferralException e) {
 		} catch (LDAPException e) {
 			if (e.getResultCode() != LDAPException.NO_SUCH_OBJECT) {
 				throw new InternalErrorException ("Error reading "+ dn,e);
 			}
+			handleException(e, connection);
 		} finally {
 			returnConnection(domain);
 		}
@@ -833,7 +869,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				LDAPEntry entry = new LDAPEntry(dn, attributeSet);
 				try {
 					log.info("Creating " + dn);
-					getConnection(domain).add(entry);
+					connection.add(entry);
 				} finally {
 					returnConnection(domain);
 				}
@@ -857,7 +893,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			if (entry == null) {
 				if (preInsert(source, object)) {
 					LDAPAttributeSet attributeSet = new LDAPAttributeSet();
-					for (String attribute : object.getAttributes()) {
+					for (String attribute : object.getAttributes()) 
+					{
 						Object ov = object.getAttribute(attribute);
 						if (ov != null
 								&& !"".equals(ov)
@@ -871,6 +908,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								checkDnAttributes(values);
 								attributeSet.add(new LDAPAttribute(attribute,
 										values));
+							}
+							else if (attribute.equals("userParameters") && ov instanceof Map)
+							{
+								AttributesEncoder e = new AttributesEncoder(null);
+								Map<String,String> ovMap = (Map<String,String>) ov;
+								for (String s : ovMap.keySet())
+								{
+									e.put(s, ovMap.get(s));
+								}
+								attributeSet.add(new LDAPAttribute(attribute,
+										e.getBytes()));
 							}
 							else if (ov instanceof byte[]) {
 								attributeSet.add(new LDAPAttribute(attribute,
@@ -939,6 +987,20 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								modList.add(new LDAPModification(
 										LDAPModification.DELETE,
 										new LDAPAttribute(attribute)));
+							}
+							else if (attribute.equals("userParameters") && ov instanceof Map)
+							{
+								LDAPAttribute previous = entry.getAttribute(attribute);
+								AttributesEncoder e = new AttributesEncoder(previous == null? null: previous.getByteValue());
+								Map<String,String> ovMap = (Map<String,String>) ov;
+								for (String s : ovMap.keySet())
+								{
+									e.put(s, ovMap.get(s));
+								}
+								modList.add(new LDAPModification(
+										previous == null ? LDAPModification.ADD: LDAPModification.REPLACE,
+											new LDAPAttribute(attribute,
+													e.getBytes())));
 							} else if (ov != null
 									&& entry.getAttribute(attribute) == null) {
 								if (ov instanceof byte[]) {
@@ -1037,6 +1099,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		} catch (Exception e) {
 			String msg = "updating object : " + accountName;
 			log.warn(msg, e);
+			handleException(e, conn);
 			throw new InternalErrorException(msg, e);
 		} finally {
 			returnConnection(domain);
@@ -1140,6 +1203,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					} catch (Exception e) {
 						String msg = "updating object : " + dn;
 						log.warn(msg, e);
+						handleException(e, conn);
 						throw new InternalErrorException(msg, e);
 					} finally {
 						returnConnection(domain);
@@ -1206,7 +1270,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			}
 			return null;
-
+		} catch (LDAPException e) {
+			handleException(e, conn);
+			throw e;
 		} finally {
 			returnConnection(domain);
 		}
@@ -1250,7 +1316,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			}
 			return null;
-
+		} catch (LDAPException e) {
+			handleException(e, conn);
+			throw e;
 		} finally {
 			returnConnection(domain);
 		}
@@ -1478,6 +1546,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						}
 					}
 				}
+			} catch (LDAPException e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -1764,6 +1835,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						}
 					}
 				}
+			} catch (LDAPException e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -1977,7 +2051,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						conn.modify(entry.getDN(), mods);
 					}
 					else
+					{
+						handleException(e, conn);
 						throw e;
+					}
 				} finally {
 					returnConnection(domain);
 				}
@@ -2082,6 +2159,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							userEntry);
 				}
 			}
+		} catch (LDAPException e) {
+			handleException(e, c);
+			throw e;
 		} finally {
 			returnConnection(domain);
 		}
@@ -2160,6 +2240,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				log.info("Added", null, null);
 				postInsertTrigger(group, user, groupEntry, userEntry);
 			} catch (LDAPException e) {
+				handleException(e, conn);
 				// Ignore when adding a new group membership that is included as primary group id
 				if (e.getResultCode() != LDAPException.ENTRY_ALREADY_EXISTS)
 					throw e;
@@ -2511,6 +2592,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					lc.modify(entry.getDN(), mods);
 
 					return result;
+				} catch (LDAPException e) {
+					handleException(e, lc);
+					throw e;
 				} finally {
 					returnConnection(domain);
 				}
@@ -2662,6 +2746,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				if (debugEnabled)
 					log.info("Fetched " + count + " loaded");
 			} catch (Exception e) {
+				handleException(e, lc);
 				throw new InternalErrorException(e.getMessage(), e);
 			} finally {
 				returnConnection(mainDomain);
