@@ -262,8 +262,12 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		}
 		catch (LDAPException e)
 		{
-			throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
-					+ loginDN + "/" + password.getPassword() + ")" + e.toString(), e);
+			if (debug)
+				throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
+						+ loginDN + "/" + password.getPassword() + ")" + e.toString(), e);
+			else
+				throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
+					+ loginDN + ")" + e.toString(), e);
 		}
 		return (conn);
 	}
@@ -299,6 +303,14 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	public void setQueryTimeout(Long timeout) {
 		this.queryTimeout = timeout ;
 		
+	}
+
+	public boolean isAlwaysTrust() {
+		return alwaysTrust;
+	}
+
+	public boolean isFollowReferrals() {
+		return followReferrals;
 	}
 
 }

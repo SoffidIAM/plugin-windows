@@ -45,6 +45,8 @@ import java.util.Map;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import com.soffid.iam.api.AccountStatus;
+
 import es.caib.seycon.*;
 import es.caib.seycon.agent.WindowsNTAgent;
 import es.caib.seycon.ng.comu.Account;
@@ -136,23 +138,11 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 				extractSystemFile(DLL_NAME, new File(config.getHomeDir(),
 						"system/" + DLL_NAME));
 			} else {
-				File f = new File(config.getHomeDir(),"system/" + NET_NAME);
-				extractSystemFile(NET_NAME, f);
-				TimedProcess tp = new TimedProcess(3000);
-				int result = tp.exec(new String[] {"chmod","755",f.getPath()});
-				if (result != 0) {
-					throw new InternalErrorException("Error setting attributes for "+NET_NAME+":\n"+
-							tp.getOutput()+"\n"+tp.getError());
-				}
-				extractSystemFile(NETAPI_NAME, new File(config.getHomeDir(),
-						"system/" + NETAPI_NAME));
 				generateEnvironment();
 				getNbServerName ();
 			}
 		} catch (IOException e) {
 			throw new InternalErrorException("Error extracting files");
-		} catch (TimedOutException e) {
-			throw new InternalErrorException("Error extracting files", e);
 		}
 
 	}
@@ -166,11 +156,6 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 				env2.add(key+"="+env.get(key));
 		}
 				
-		String library_path = System.getenv("LD_LIBRARY_PATH");
-		if (library_path == null)
-			env2.add ("LD_LIBRARY_PATH=/usr/lib:/lib"+LIBRARY_PATH);
-		else
-			env2.add ("LD_LIBRARY_PATH="+LIBRARY_PATH+":"+library_path);
 		environment = env2.toArray(new String[env2.size()]);
 	}
 
@@ -474,11 +459,15 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 		TimedProcess p = new TimedProcess(4000);
 		p.setEnvironment(environment);
 		try {
-			int result = p.exec(new String[] {NET_NAME, "rpc", "user", "get-info ", user, suffix, suffix2});
+			int result = p.exec(new String[] {NET_NAME, "rpc", "user", "get_info", user, suffix, suffix2});
 			if (result != 0) {
 				return;
 			}
-			result = p.exec(new String [] {NET_NAME, "rpc", "user","set-info", user, "flags=d", suffix, suffix2});
+			Account account = getServer().getAccountInfo(user, getCodi());
+			if (account == null || account.getStatus() == AccountStatus.REMOVED)
+				result = p.exec(new String [] {NET_NAME, "rpc", "user","delete", user, suffix, suffix2});
+			else
+				result = p.exec(new String [] {NET_NAME, "rpc", "user","set_info", user, "flags=d", suffix, suffix2});
 			if (result != 0)
 				throw new InternalErrorException(
 						"Error deshabilitando usuario " + user);

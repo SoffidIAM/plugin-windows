@@ -1,5 +1,6 @@
 package com.soffid.iam.sync.agent;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.InvalidParameterException;
@@ -8,7 +9,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.axis.utils.ByteArrayOutputStream;
 import org.bouncycastle.util.encoders.Hex;
 
 public class AttributesEncoder {
