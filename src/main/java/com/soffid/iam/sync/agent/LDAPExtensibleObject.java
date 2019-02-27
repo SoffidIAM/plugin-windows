@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -49,6 +50,8 @@ public class LDAPExtensibleObject extends ExtensibleObject
 			return true;
 		else if ("lastLogon".equals(key))
 			return true;
+		else if ("lastLogonIgnoreServers".equals(key))
+			return true;
 		else
 			return entry.getAttribute((String)key) != null;
 	}
@@ -72,6 +75,14 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		
 		if ("lastLogon".equals(attribute))
 			return calculateLastLogon (false);
+		
+		if ("lastLogonIgnoreServers".equals(attribute))
+		{
+			Object r = super.getAttribute(attribute);
+			if (r == null)
+				r = "";
+			return r;
+		}
 		
 		if ("lastLogonStrict".equals(attribute))
 			return calculateLastLogon (true);
@@ -135,27 +146,36 @@ public class LDAPExtensibleObject extends ExtensibleObject
 			}
     		
     	}
+    	String exclusions = (String) get ("lastLogonIgnoreServers");
+    	String exclusionsArray[] = exclusions == null ? new String[0] : exclusions.split("[ ,]+");
+    	Arrays.sort(exclusionsArray);
     	for (LDAPPool p: pool.getChildPools())
     	{
-        	pool.getLog().info("Connecting to "+p.getLdapHost());
-    		LDAPConnection c = null;
-    		try {
-    			c = p.getConnection();
-    			LDAPEntry entry2 = c.read(entry.getDN(), new String[] {"lastLogon"});
-    	    	LDAPAttribute lastLogonAtt = entry2.getAttribute("lastLogon");
-    	    	if (lastLogonAtt != null)
-    	    	{
-    	    		Long newLastLogon = Long.decode(lastLogonAtt.getStringValue());
-    	    		pool.getLog().info("Last logon on "+p.getLdapHost()+"="+newLastLogon);
-    	    		if (lastLogon == null || newLastLogon.compareTo(lastLogon) > 0)
-    	    			lastLogon = newLastLogon;
-    	    	}
-    		} catch (Exception e) {
-    			pool.getLog().info("Error querying lastLogon attribute on "+p.getLdapHost(), e);
-    			if (fail)
-    				throw new RuntimeException("Error querying lastLogon attribute on "+p.getLdapHost(), e);
-    		} finally {
-				p.returnConnection();
+    		String name = p.getLdapHost();
+    		if ( Arrays.binarySearch(exclusionsArray,  name) >= 0 )
+        		pool.getLog().info("Ignoring lastLogon from "+p.getLdapHost());
+    		else
+    		{
+				pool.getLog().info("Getting lastLogon from "+p.getLdapHost());
+				LDAPConnection c = null;
+				try {
+					c = p.getConnection();
+					LDAPEntry entry2 = c.read(entry.getDN(), new String[] {"lastLogon"});
+			    	LDAPAttribute lastLogonAtt = entry2.getAttribute("lastLogon");
+			    	if (lastLogonAtt != null)
+			    	{
+			    		Long newLastLogon = Long.decode(lastLogonAtt.getStringValue());
+			    		pool.getLog().info("Last logon on "+p.getLdapHost()+"="+newLastLogon);
+			    		if (lastLogon == null || newLastLogon.compareTo(lastLogon) > 0)
+			    			lastLogon = newLastLogon;
+			    	}
+				} catch (Exception e) {
+					pool.getLog().info("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+					if (fail)
+						throw new RuntimeException("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+				} finally {
+					p.returnConnection();
+				}
     		}
     	}
     	
