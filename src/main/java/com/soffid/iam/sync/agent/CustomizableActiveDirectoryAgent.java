@@ -879,225 +879,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			LDAPEntry entry = null;
 			entry = searchSamAccount(object, accountName);
 			if (entry == null) {
-				if (preInsert(source, object)) {
-					LDAPAttributeSet attributeSet = new LDAPAttributeSet();
-					for (String attribute : object.getAttributes()) 
-					{
-						Object ov = object.getAttribute(attribute);
-						if (ov != null
-								&& !"".equals(ov)
-								&& !"dn".equals(attribute)
-								&& !BASE_DN.equals(attribute)
-								&& !RELATIVE_DN.equals(attribute)) {
-							if (attribute.equals("manager"))
-							{
-								String values[] = toStringArray(object
-										.getAttribute(attribute));
-								checkDnAttributes(values);
-								attributeSet.add(new LDAPAttribute(attribute,
-										values));
-							}
-							else if (attribute.equals("userParameters") && ov instanceof Map)
-							{
-								AttributesEncoder e = new AttributesEncoder(null);
-								Map<String,String> ovMap = (Map<String,String>) ov;
-								for (String s : ovMap.keySet())
-								{
-									e.put(s, ovMap.get(s));
-								}
-								attributeSet.add(new LDAPAttribute(attribute,
-										e.getBytes()));
-							}
-							else if (ov instanceof byte[]) {
-								attributeSet.add(new LDAPAttribute(attribute,
-										(byte[]) ov));
-							} else {
-								String values[] = toStringArray(object
-										.getAttribute(attribute));
-								attributeSet.add(new LDAPAttribute(attribute,
-										values));
-							}
-						}
-					}
-
-
-					if (object.getAttribute(USER_ACCOUNT_CONTROL) == null) {
-						if ("user".equals(object.getObjectType())
-								|| "account".equals(object.getObjectType()))
-						{
-							attributeSet.add(new LDAPAttribute(
-									USER_ACCOUNT_CONTROL, Integer
-											.toString(ADS_UF_ACCOUNTDISABLE
-													+ ADS_UF_NORMAL_ACCOUNT)));
-						}
-					}
-
-					int i = dn.indexOf(",");
-					if (i > 0) {
-						String parentName = dn.substring(i + 1);
-						createParents(parentName);
-					}
-					debugModifications("Adding user", dn, attributeSet);
-					entry = new LDAPEntry(dn, attributeSet);
-					conn.add(entry);
-					postInsert(source, object, entry);
-					if ((accountName != null)
-							&& ("user".equals(object.getObjectType()) || "account"
-									.equals(object.getObjectType()))) {
-						Password p = getServer().getAccountPassword(
-								accountName, getCodi());
-						if (p != null) {
-							updateObjectPassword(source, accountName, object,
-									p, false, false);
-						} else {
-							p = getServer().generateFakePassword(accountName,
-									getCodi());
-							updateObjectPassword(source, accountName, object,
-									p, true, false);
-						}
-					}
-				}
+				createNewObject(conn, accountName, dn, object, source);
 			} else {
-				if (preUpdate(source, object, entry)) {
-					LinkedList<LDAPModification> modList = new LinkedList<LDAPModification>();
-					for (String attribute : object.getAttributes()) {
-						Object ov = object.getAttribute(attribute);
-						if (ov != null && "".equals(ov))
-							ov = null;
-						if (!"dn".equals(attribute)
-								&& !"objectClass".equals(attribute)
-								&& !BASE_DN.equals(attribute)
-								&& !RELATIVE_DN.equals(attribute)) {
-							String[] value = toStringArray(object.getAttribute(attribute));
-							if (value != null && value.length == 0)
-							{
-								ov = null;
-								value = null;
-							}
-							LDAPAttribute previous = entry.getAttribute(attribute);
-							if (ov == null
-									&& previous != null) {
-								modList.add(new LDAPModification(
-										LDAPModification.DELETE,
-										new LDAPAttribute(attribute)));
-							}
-							else if (attribute.equals( SAM_ACCOUNT_NAME_ATTRIBUTE) && ov instanceof String)
-							{
-								String old = previous == null ? null : 
-										previous.getStringValue();
-								if ( old == null || ! old.equalsIgnoreCase( (String) ov ))
-								{
-									modList.add(new LDAPModification(
-											previous == null ? LDAPModification.ADD: LDAPModification.REPLACE,
-												new LDAPAttribute(attribute, (String) ov)));
-								}
-							} 
-							else if (attribute.equals("userParameters") && ov instanceof Map)
-							{
-								AttributesEncoder e = new AttributesEncoder(previous == null? null: previous.getByteValue());
-								Map<String,String> ovMap = (Map<String,String>) ov;
-								for (String s : ovMap.keySet())
-								{
-									e.put(s, ovMap.get(s));
-								}
-								modList.add(new LDAPModification(
-										previous == null ? LDAPModification.ADD: LDAPModification.REPLACE,
-											new LDAPAttribute(attribute,
-													e.getBytes())));
-							} else if (ov != null
-									&& previous == null) {
-								if (ov instanceof byte[]) {
-									modList.add(new LDAPModification(
-											LDAPModification.ADD,
-											new LDAPAttribute(attribute,
-													(byte[]) ov)));
-								} else {
-									modList.add(new LDAPModification(
-											LDAPModification.ADD,
-											new LDAPAttribute(attribute, value)));
-								}
-							} else if ((ov != null)
-									&& (previous != null)
-									&& !"cn".equalsIgnoreCase(attribute)) {
-								if (value.length != 1 ||
-										previous.getStringValueArray().length != 1 ||
-										!value[0].equals(previous.getStringValue())) {
-									if (ov instanceof byte[])
-										modList.add(new LDAPModification(
-												LDAPModification.REPLACE,
-												new LDAPAttribute(attribute,
-														(byte[]) ov)));
-									else
-										modList.add(new LDAPModification(
-												LDAPModification.REPLACE,
-												new LDAPAttribute(attribute,
-														value)));
-								}
-							}
-						}
-					}
-
-					if (modList.size() > 0) {
-						// Temporary patch
-						String upn = vom.toSingleString(object.getAttribute("userPrincipalName"));
-						String objectClass = vom.toSingleString(object
-								.getAttribute("objectClass"));
-						if (upn != null && objectClass != null)
-						{
-							LDAPEntry entry2 = findUpnObject (objectClass, accountName, upn);
-							if (entry2 != null && ! entry2.getDN().equals(entry.getDN()))
-							{
-								log.info("Removing userPrincipalName from "+entry2.getDN());
-								LDAPModification[] mods2 = new LDAPModification[] {
-										new LDAPModification(
-												LDAPModification.DELETE,
-												new LDAPAttribute("userPrincipalName", upn))
-								};
-								conn.modify(entry2.getDN(), mods2);
-							}
-						}
-						
-						LDAPModification[] mods = new LDAPModification[modList
-								.size()];
-						mods = (LDAPModification[]) modList.toArray(mods);
-						debugModifications("Modifying object ", entry.getDN(),
-								mods);
-						conn.modify(entry.getDN(), mods);
-						postUpdate(source, object, entry);
-					}
-
-					if (!entry.getDN().equalsIgnoreCase(dn)
-							&& !entry.getDN().contains(",CN=Builtin,")) {
-						// Check if must rename
-						boolean rename = true;
-						ExtensibleObjectMapping mapping = getMapping(object
-								.getObjectType());
-						if (mapping != null) {
-							rename = !"false".equalsIgnoreCase(mapping
-									.getProperties().get("rename"));
-						}
-						if (rename) {
-							log.info("Renaming from "+entry.getDN()+" to "+dn);
-							int i = dn.indexOf(",");
-							if (i > 0) {
-								String parentName = dn.substring(i + 1);
-								createParents(parentName);
-
-								LDAPEntry oldEntry = searchEntry(dn);
-								if (oldEntry != null)
-								{
-									log.info("Moving away old object "+dn);
-									conn.rename(dn, dn.substring(0, i)+" - old "+System.currentTimeMillis(),
-											parentName, true);
-
-								}
-								entry = conn.read(entry.getDN());
-								conn.rename(entry.getDN(), dn.substring(0, i),
-										parentName, true);
-							}
-						}
-					}
-				}
+				updateExistingObject(conn, entry, accountName, dn, object, source);
 			}
 		} catch (Exception e) {
 			String msg = "updating object : " + accountName;
@@ -1106,6 +890,242 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw new InternalErrorException(msg, e);
 		} finally {
 			returnConnection(domain);
+		}
+	}
+
+
+	private void updateExistingObject(LDAPConnection conn, LDAPEntry entry, String accountName, String dn,
+			ExtensibleObject object, ExtensibleObject source)
+			throws InternalErrorException, UnsupportedEncodingException, IOException, Exception, LDAPException {
+		if (preUpdate(source, object, entry)) {
+			LinkedList<LDAPModification> modList = new LinkedList<LDAPModification>();
+			for (String attribute : object.getAttributes()) {
+				Object ov = object.getAttribute(attribute);
+				if (ov != null && "".equals(ov))
+					ov = null;
+				if (!"dn".equals(attribute)
+						&& !"objectClass".equals(attribute)
+						&& !BASE_DN.equals(attribute)
+						&& !RELATIVE_DN.equals(attribute)) {
+					log.info("Attributo "+attribute+" valor = "+ov+" class "+(ov == null ? "NULL": ov.getClass().toString()));
+					String[] value = toStringArray(object.getAttribute(attribute));
+					if (value != null && value.length == 0)
+					{
+						log.info("Caso null array");
+						ov = null;
+						value = null;
+					}
+					LDAPAttribute previous = entry.getAttribute(attribute);
+					if (ov == null
+							&& previous != null) {
+						log.info("Caso delete");
+						modList.add(new LDAPModification(
+								LDAPModification.DELETE,
+								new LDAPAttribute(attribute)));
+					}
+					else if (attribute.equals( SAM_ACCOUNT_NAME_ATTRIBUTE) && ov instanceof String)
+					{
+						String old = previous == null ? null : 
+								previous.getStringValue();
+						if ( old == null || ! old.equalsIgnoreCase( (String) ov ))
+						{
+							modList.add(new LDAPModification(
+									previous == null ? LDAPModification.ADD: LDAPModification.REPLACE,
+										new LDAPAttribute(attribute, (String) ov)));
+						}
+					} 
+					else if (attribute.equals("userParameters") && ov instanceof Map)
+					{
+						AttributesEncoder e = new AttributesEncoder(previous == null? null: previous.getByteValue());
+						Map<String,String> ovMap = (Map<String,String>) ov;
+						for (String s : ovMap.keySet())
+						{
+							e.put(s, ovMap.get(s));
+						}
+						modList.add(new LDAPModification(
+								previous == null ? LDAPModification.ADD: LDAPModification.REPLACE,
+									new LDAPAttribute(attribute,
+											e.getBytes())));
+					} else if (ov != null
+							&& previous == null) {
+						log.info("Caso add");
+						if (ov instanceof byte[]) {
+							modList.add(new LDAPModification(
+									LDAPModification.ADD,
+									new LDAPAttribute(attribute,
+											(byte[]) ov)));
+						} else {
+							modList.add(new LDAPModification(
+									LDAPModification.ADD,
+									new LDAPAttribute(attribute, value)));
+						}
+					} else if ((ov != null)
+							&& (previous != null)
+							&& !"cn".equalsIgnoreCase(attribute)) {
+						log.info("Caso update");
+						if (value.length != 1 ||
+								previous.getStringValueArray().length != 1 ||
+								!value[0].equals(previous.getStringValue())) {
+							if (ov instanceof byte[])
+								modList.add(new LDAPModification(
+										LDAPModification.REPLACE,
+										new LDAPAttribute(attribute,
+												(byte[]) ov)));
+							else
+								modList.add(new LDAPModification(
+										LDAPModification.REPLACE,
+										new LDAPAttribute(attribute,
+												value)));
+						}
+					}
+				}
+			}
+
+			if (modList.size() > 0) {
+				// Temporary patch
+				String upn = vom.toSingleString(object.getAttribute("userPrincipalName"));
+				String objectClass = vom.toSingleString(object
+						.getAttribute("objectClass"));
+				if (upn != null && objectClass != null)
+				{
+					LDAPEntry entry2 = findUpnObject (objectClass, accountName, upn);
+					if (entry2 != null && ! entry2.getDN().equals(entry.getDN()))
+					{
+						log.info("Removing userPrincipalName from "+entry2.getDN());
+						LDAPModification[] mods2 = new LDAPModification[] {
+								new LDAPModification(
+										LDAPModification.DELETE,
+										new LDAPAttribute("userPrincipalName", upn))
+						};
+						conn.modify(entry2.getDN(), mods2);
+					}
+				}
+				
+				LDAPModification[] mods = new LDAPModification[modList
+						.size()];
+				mods = (LDAPModification[]) modList.toArray(mods);
+				debugModifications("Modifying object ", entry.getDN(),
+						mods);
+				conn.modify(entry.getDN(), mods);
+				postUpdate(source, object, entry);
+			}
+
+			if (!entry.getDN().equalsIgnoreCase(dn)
+					&& !entry.getDN().contains(",CN=Builtin,")) {
+				// Check if must rename
+				boolean rename = true;
+				ExtensibleObjectMapping mapping = getMapping(object
+						.getObjectType());
+				if (mapping != null) {
+					rename = !"false".equalsIgnoreCase(mapping
+							.getProperties().get("rename"));
+				}
+				if (rename) {
+					log.info("Renaming from "+entry.getDN()+" to "+dn);
+					int i = dn.indexOf(",");
+					if (i > 0) {
+						String parentName = dn.substring(i + 1);
+						createParents(parentName);
+
+						LDAPEntry oldEntry = searchEntry(dn);
+						if (oldEntry != null)
+						{
+							log.info("Moving away old object "+dn);
+							conn.rename(dn, dn.substring(0, i)+" - old "+System.currentTimeMillis(),
+									parentName, true);
+
+						}
+						entry = conn.read(entry.getDN());
+						conn.rename(entry.getDN(), dn.substring(0, i),
+								parentName, true);
+					}
+				}
+			}
+		}
+	}
+
+
+	private void createNewObject(LDAPConnection conn, String accountName, String dn, ExtensibleObject object,
+			ExtensibleObject source)
+			throws InternalErrorException, Exception, UnsupportedEncodingException, IOException, LDAPException {
+		LDAPEntry entry;
+		if (preInsert(source, object)) {
+			LDAPAttributeSet attributeSet = new LDAPAttributeSet();
+			for (String attribute : object.getAttributes()) 
+			{
+				Object ov = object.getAttribute(attribute);
+				if (ov != null
+						&& !"".equals(ov)
+						&& !"dn".equals(attribute)
+						&& !BASE_DN.equals(attribute)
+						&& !RELATIVE_DN.equals(attribute)) {
+					if (attribute.equals("manager"))
+					{
+						String values[] = toStringArray(object
+								.getAttribute(attribute));
+						checkDnAttributes(values);
+						attributeSet.add(new LDAPAttribute(attribute,
+								values));
+					}
+					else if (attribute.equals("userParameters") && ov instanceof Map)
+					{
+						AttributesEncoder e = new AttributesEncoder(null);
+						Map<String,String> ovMap = (Map<String,String>) ov;
+						for (String s : ovMap.keySet())
+						{
+							e.put(s, ovMap.get(s));
+						}
+						attributeSet.add(new LDAPAttribute(attribute,
+								e.getBytes()));
+					}
+					else if (ov instanceof byte[]) {
+						attributeSet.add(new LDAPAttribute(attribute,
+								(byte[]) ov));
+					} else {
+						String values[] = toStringArray(object
+								.getAttribute(attribute));
+						attributeSet.add(new LDAPAttribute(attribute,
+								values));
+					}
+				}
+			}
+
+
+			if (object.getAttribute(USER_ACCOUNT_CONTROL) == null) {
+				if ("user".equals(object.getObjectType())
+						|| "account".equals(object.getObjectType()))
+				{
+					attributeSet.add(new LDAPAttribute(
+							USER_ACCOUNT_CONTROL, Integer
+									.toString(ADS_UF_ACCOUNTDISABLE
+											+ ADS_UF_NORMAL_ACCOUNT)));
+				}
+			}
+
+			int i = dn.indexOf(",");
+			if (i > 0) {
+				String parentName = dn.substring(i + 1);
+				createParents(parentName);
+			}
+			debugModifications("Adding user", dn, attributeSet);
+			entry = new LDAPEntry(dn, attributeSet);
+			conn.add(entry);
+			postInsert(source, object, entry);
+			if ((accountName != null)
+					&& ("user".equals(object.getObjectType()) || "account"
+							.equals(object.getObjectType()))) {
+				Password p = getServer().getAccountPassword(
+						accountName, getCodi());
+				if (p != null) {
+					updateObjectPassword(source, accountName, object,
+							p, false, false);
+				} else {
+					p = getServer().generateFakePassword(accountName,
+							getCodi());
+					updateObjectPassword(source, accountName, object,
+							p, true, false);
+				}
+			}
 		}
 	}
 

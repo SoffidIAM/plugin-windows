@@ -152,7 +152,8 @@ public class LDAPExtensibleObject extends ExtensibleObject
     	for (LDAPPool p: pool.getChildPools())
     	{
     		String name = p.getLdapHost();
-    		if ( Arrays.binarySearch(exclusionsArray,  name) >= 0 )
+    		int pos = Arrays.binarySearch(exclusionsArray,  name);
+			if ( pos >= 0 )
         		pool.getLog().info("Ignoring lastLogon from "+p.getLdapHost());
     		else
     		{
