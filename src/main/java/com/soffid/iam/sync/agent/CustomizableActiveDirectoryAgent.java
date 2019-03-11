@@ -31,6 +31,10 @@ import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 
+import com.hierynomus.smbj.SMBClient;
+import com.hierynomus.smbj.auth.AuthenticationContext;
+import com.hierynomus.smbj.connection.Connection;
+import com.hierynomus.smbj.session.Session;
 import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPAttributeSet;
 import com.novell.ldap.LDAPConnection;
@@ -48,8 +52,20 @@ import com.novell.ldap.LDAPSocketFactory;
 import com.novell.ldap.LDAPUrl;
 import com.novell.ldap.controls.LDAPPagedResultsControl;
 import com.novell.ldap.controls.LDAPPagedResultsResponse;
+import com.rapid7.client.dcerpc.RPCException;
+import com.rapid7.client.dcerpc.dto.SID;
+import com.rapid7.client.dcerpc.mserref.SystemErrorCode;
+import com.rapid7.client.dcerpc.mssamr.dto.DomainHandle;
+import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithName;
+import com.rapid7.client.dcerpc.mssamr.dto.ServerHandle;
+import com.rapid7.client.dcerpc.mssamr.dto.UserAllInformation;
+import com.rapid7.client.dcerpc.mssamr.dto.UserHandle;
+import com.rapid7.client.dcerpc.transport.RPCTransport;
+import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
 import com.soffid.iam.api.AccountStatus;
 import com.soffid.iam.api.Group;
+import com.soffid.iam.utils.Security;
+import com.soffid.msrpc.samr.SamrService;
 
 import es.caib.seycon.agent.WindowsNTBDCAgent;
 import es.caib.seycon.ng.comu.Account;
@@ -209,12 +225,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	protected boolean multiDomain;
 
 	protected Map<String,String> domains = new HashMap<String, String>();
+	protected Map<String,String> domainHost = new HashMap<String, String>();
 
 	protected String mainDomain;
 
 	protected boolean createOUs;
 
 	private Method oldNameGetter;
+
+	private String samDomainName;
+
+	private String samAccountName;
 
 	/**
 	 * Constructor
@@ -250,8 +271,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		// followReferrals = "true".equals(getDispatcher().getParam9());
 		followReferrals = false;
 		
-		log.debug("Started ActiveDirectoryAgent user=" + loginDN
-				+ " pass=" + password + "(" + password.getPassword() + ")",
+		log.debug("Started ActiveDirectoryAgent user=" + loginDN,
+//				+ " pass=" + password + "(" + password.getPassword() + ")",
 				null, null);
 		try {
 			javaDisk = new bubu.util.javadisk();
@@ -272,6 +293,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				mainDomain = baseDN.substring(start+3).toLowerCase();
 		}
 		domains.put(mainDomain, baseDN);
+		domainHost.put(mainDomain, ldapHost.trim().split("[, ]+")[0]);
 		reconfigurePool(mainDomain, ldapHost);
 
 		try {
@@ -295,6 +317,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					log.info("Unable to read object "+baseDN);
 				}
 			}
+			searchUserSamAccountName();
 		} catch (Exception e) {
 			handleException(e, conn);
 			throw new InternalErrorException(
@@ -305,7 +328,35 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
-	protected void returnConnection(String domain) {
+	private void searchUserSamAccountName() throws Exception {
+		LDAPEntry entry;
+		if (loginDN.contains("\\"))
+		{
+			ExtensibleObject eo = new ExtensibleObject();
+			eo.setObjectType(SoffidObjectType.OBJECT_ACCOUNT.getValue());
+			eo.setAttribute("objectClass", "user");
+			String s = loginDN.substring(loginDN.indexOf('\\')+1);
+			entry = searchSamAccount(eo, s);
+ 			samDomainName = "";
+		}
+		else {
+			String dn = loginDN.toLowerCase().endsWith(baseDN.toLowerCase()) ? loginDN: loginDN+","+baseDN;
+			String domain = searchDomainForDN(dn);
+			LDAPConnection conn = getConnection(domain);
+			try {
+				entry = conn.read(dn);
+			} finally {
+				returnConnection(domain);
+			}
+			samDomainName = domainHost.get(domain);
+		}
+		if (entry == null)
+			log.warn("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server");
+		samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
+	}
+
+
+	protected void returnConnection(String domain) throws InternalErrorException {
 		LDAPPool pool = getPool(domain);
 		if (pool != null) {
 			pool.returnConnection();
@@ -329,8 +380,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 
-	private LDAPPool getPool(String domain) {
-		LDAPPool pool = pools.get(getCodi()+"/"+domain);
+	private LDAPPool getPool(String domain) throws InternalErrorException {
+		LDAPPool pool = pools.get( Security.getCurrentTenantName()+ "\\"+getCodi()+"/"+domain);
 		return pool;
 	}
 
@@ -346,7 +397,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		LDAPPool pool = getPool(domain);
 		if (pool == null) {
 			pool = new LDAPPool();
-			pools.put(getCodi()+"/"+domain, pool);
+			pools.put(Security.getCurrentTenantName()+ "\\" + getCodi()+"/"+domain, pool);
 		}
 		pool.setUseSsl(useSsl );
 		pool.setBaseDN( domains.get(domain));
@@ -409,6 +460,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							if (!domains.containsKey(domain.toLowerCase()))
 							{
 								domains.put(domain.toLowerCase(), dn.toLowerCase());
+								domainHost.put(domain.toLowerCase(), url.getHost());
 								log.info("Found domain "+dn+" ( "+domain+" ): "+url.getHost());
 								reconfigurePool(domain.toLowerCase(), url.getHost());
 							}
@@ -508,6 +560,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	protected void performPasswordChange(LDAPEntry ldapUser, String accountName,
 			Password password, boolean mustchange, boolean delegation,
 			boolean replacePassword) throws Exception {
+		
+		
 		ArrayList<LDAPModification> modList = new ArrayList<LDAPModification>();
 		LDAPAttribute atributo;
 		byte b[] = encodePassword(password);
@@ -545,22 +599,75 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
 						.toString(status))));
 
-		LDAPModification[] mods = new LDAPModification[modList.size()];
-		mods = (LDAPModification[]) modList.toArray(mods);
-		debugModifications("Modifying password ", ldapUser.getDN(), mods);
 		String domain = searchDomainForDN (ldapUser.getDN());
 		LDAPConnection conn = getConnection(domain);
-		try {
-			conn.modify(ldapUser.getDN(), mods);
-		} catch (Exception e) {
-			handleException(e, conn);
-			throw e;
-		} finally {
-			returnConnection(domain);
+		if (conn.isTLS())
+		{
+			LDAPModification[] mods = new LDAPModification[modList.size()];
+			mods = (LDAPModification[]) modList.toArray(mods);
+			debugModifications("Modifying password ", ldapUser.getDN(), mods);
+			try {
+				conn.modify(ldapUser.getDN(), mods);
+			} catch (Exception e) {
+				handleException(e, conn);
+				throw e;
+			} finally {
+				returnConnection(domain);
+			}
+		} else {
+			updateSamPassword (domain, accountName, password, mustchange);
 		}
 		log.info("UpdateUserPassword - setting password for user {}",
 				accountName, null);
 	}
+
+	final SMBClient smbClient = new SMBClient();
+	private void updateSamPassword(String domain, String accountName, Password password, boolean mustchange) throws IOException {
+		String host = domainHost.get(domain);
+		final Connection smbConnection = smbClient.connect(host == null ? domain: host);
+		try {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+		    		this.samAccountName, this.password.getPassword().toCharArray(), this.samDomainName);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+		    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+		    SamrService sam = new SamrService(transport2, session);
+		    ServerHandle server = sam.openServer();
+		    MembershipWithName[] domains = sam.getDomainsForServer(server);
+		    for (MembershipWithName n: domains)
+		    {
+			    SID sid = sam.getSIDForDomain(server, n.getName());
+		    	DomainHandle domainHandle = sam.openDomain(server, sid);
+		    	if (debugEnabled)
+		    		log.info("Searching user "+accountName+" at SAM domain "+n.getName());
+		    	int [] r;
+		    	try {
+		    		r = sam.lookupNames(domainHandle, new String[] {accountName});
+		    	} catch (RPCException e) {
+		    		if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED)
+		    			continue;
+		    		else
+		    			throw e;
+		    	}
+		    	for (int i: r) {
+		    		if (debugEnabled)
+		    			log.info("Opening user "+accountName+" at SAM domain "+n.getName());
+		    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
+		    		try {
+			    		UserAllInformation userAllInformation = sam.getUserAllInformation(userHandle);
+			    		if (debugEnabled)
+			    			log.info("Setting password for user "+accountName+" at SAM domain "+n.getName());
+						sam.setPasswordEx(userHandle, password.getPassword(), mustchange);
+		    		} finally {
+		    			sam.closeHandle(userHandle);
+		    		}
+		    	}		    	
+		    }
+		} finally {
+			smbConnection.close();
+		}
+
+	}
+
 
 	protected String searchDomainForDN(String dn) {
 		if ( ! multiDomain )
@@ -737,10 +844,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	Map<String, String> getProperties (String objectType) {
-		for ( ExtensibleObjectMapping om: objectMappings)
+		if (objectMappings != null)
 		{
-			if (om.getSystemObject().equals(objectType))
-				return om.getProperties();
+			for ( ExtensibleObjectMapping om: objectMappings)
+			{
+				if (om.getSystemObject().equals(objectType))
+					return om.getProperties();
+			}
 		}
 		return new HashMap<String,String>();
 	}
@@ -2278,12 +2388,18 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				if (e.getResultCode() == LDAPException.UNWILLING_TO_PERFORM && enable && entry.getAttribute("unicodePwd") == null)
 				{
 					Password password = getServer().getOrGenerateUserPassword(userName, getDispatcher().getCodi());
-					
-					byte b[] = encodePassword(password);
-					LDAPModification modif2 = new LDAPModification(LDAPModification.ADD, new LDAPAttribute("unicodePwd", b));
-					LDAPModification[] mods = new LDAPModification[] { modif2, modif };
-					debugModifications("Updating user data ", entry.getDN(), mods);
-					conn.modify(entry.getDN(), mods);
+				
+					if (conn.isTLS())
+					{
+						byte b[] = encodePassword(password);
+						LDAPModification modif2 = new LDAPModification(LDAPModification.ADD, new LDAPAttribute("unicodePwd", b));
+						LDAPModification[] mods = new LDAPModification[] { modif2, modif };
+						debugModifications("Updating user data ", entry.getDN(), mods);
+						conn.modify(entry.getDN(), mods);
+					} else {
+						updateSamPassword(domain, userName, password, true);
+						conn.modify(entry.getDN(), modif);
+					}
 				}
 				else
 				{

@@ -30,10 +30,21 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>com.soffid.iam.console</groupId>
+      <artifactId>iam-core</artifactId>
+      <version>2.5.0</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>com.soffid.iam.sync</groupId>
       <artifactId>syncserver</artifactId>
       <version>2.5.0</version>
       <scope>provided</scope>
+    </dependency>
+    <dependency>
+    	<groupId>com.soffid.smbj</groupId>
+    	<artifactId>smbrpc</artifactId>
+    	<version>1.0.0</version>
     </dependency>
   </dependencies>
   <licenses>
@@ -105,13 +116,14 @@
               <artifactSet>
                 <includes>
 					<include>com.novell.ldap:jldap</include>
-					<include>com.soffid.smbj:msrpc</include>
+					<include>com.soffid.smbj:smbrpc</include>
 					<include>com.rapid7.client:dcerpc</include>
 					<include>commons-io:commons-io</include>
 					<include>org.apache.commons:commons-lang3</include>
 					<include>com.google.guava:guava</include>
 					<include>com.hierynomus:smbj</include>
 					<include>net.engio:mbassador</include>
+					<include>com.hierynomus:asn-one</include>
                 </includes>
               </artifactSet>
             </configuration>
