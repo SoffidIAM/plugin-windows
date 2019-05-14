@@ -13,12 +13,6 @@
   <version>4.0.3-SNAPSHOT</version>
   <dependencies>
     <dependency>
-    	<groupId>com.soffid.iam.sync.w32</groupId>
-    	<artifactId>usradm</artifactId>
-    	<version>2.0.1</version>
-    	<type>exe</type>
-    </dependency>
-    <dependency>
       <groupId>com.novell.ldap</groupId>
       <artifactId>jldap</artifactId>
       <version>2009.10.07-1</version>
