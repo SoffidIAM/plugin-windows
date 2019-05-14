@@ -185,8 +185,21 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	}
 
 	protected LDAPConnection createConnection(String host) throws Exception {
+		try {
+			return createConnection (host, useSsl, ldapPort);
+		} catch (Exception e) {
+			if (alwaysTrust && useSsl) {
+				return createConnection (host, false, LDAPConnection.DEFAULT_PORT);
+			}
+			else
+				throw e;
+		}
+		
+	}
+	
+	protected LDAPConnection createConnection(String host, boolean ssl, int port) throws Exception {
 		LDAPConnection conn;
-		if (useSsl)
+		if (ssl)
 		{
 			
 			LDAPSocketFactory ldapSecureSocketFactory = null;
@@ -205,8 +218,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			
 			if (debug)
 			{
-				if (log != null)
-					log.debug("Creating LDAP connection to "+host);
+//				if (log != null)
+//					log.debug("Creating LDAP connection to "+host);
 				DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
 				if (log != null)
 					factory.setLog(log);
@@ -215,6 +228,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			}
 			else
 				ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
+			
 			conn = new LDAPConnection(ldapSecureSocketFactory);
 		} else  {
 			conn = new LDAPConnection();
@@ -248,12 +262,12 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			if (queryTimeout != null)
 				constraints.setTimeLimit(queryTimeout.intValue());
 			conn.setConstraints(constraints);
-			conn.connect(host, ldapPort);
+			conn.connect(host, port);
 			conn.bind(ldapVersion, loginDN, password.getPassword()
 					.getBytes("UTF8"));
 			conn.setConstraints(constraints);
-			if (debug)
-				log.info("Created connection "+conn.toString());
+//			if (debug)
+//				log.info("Created connection "+conn.toString());
 		}
 		catch (UnsupportedEncodingException e)
 		{
@@ -263,7 +277,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		catch (LDAPException e)
 		{
 			throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
-					+ loginDN + "/" + password.getPassword() + ")" + e.toString(), e);
+					+ loginDN + ")" + e.toString(), e);
 		}
 		return (conn);
 	}
@@ -299,6 +313,14 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	public void setQueryTimeout(Long timeout) {
 		this.queryTimeout = timeout ;
 		
+	}
+
+	public boolean isAlwaysTrust() {
+		return alwaysTrust;
+	}
+
+	public boolean isFollowReferrals() {
+		return followReferrals;
 	}
 
 }

@@ -83,7 +83,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 			if (searches == null)
 			{
 				searches = new Stack<CustomizableActiveDirectoryAgent.LdapSearch>();
-				for (String domain: domains.keySet())
+				for (String domain: domainToShortName.keySet())
 				{
 					for (ExtensibleObjectMapping mapping : objectMappings) {
 						if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_USER) ||
