@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -127,7 +128,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 	}
 
 	Long lastLogon = null;
-    private String calculateLastLogon(boolean fail) {
+    private String calculateLastLogon(final boolean fail) {
     	if (lastLogon != null)
     		return lastLogon.toString();
     	if (pool == null)
@@ -147,39 +148,57 @@ public class LDAPExtensibleObject extends ExtensibleObject
     		
     	}
     	String exclusions = (String) get ("lastLogonIgnoreServers");
-    	String exclusionsArray[] = exclusions == null ? new String[0] : exclusions.split("[ ,]+");
+    	final String exclusionsArray[] = exclusions == null ? new String[0] : exclusions.split("[ ,]+");
     	Arrays.sort(exclusionsArray);
-    	for (LDAPPool p: pool.getChildPools())
+    	
+    	LinkedList<Thread> poolThread = new LinkedList<Thread>();
+    	for (final LDAPPool p: pool.getChildPools())
     	{
-    		String name = p.getLdapHost();
-    		int pos = Arrays.binarySearch(exclusionsArray,  name);
-			if ( pos >= 0 )
-        		pool.getLog().info("Ignoring lastLogon from "+p.getLdapHost());
-    		else
-    		{
-				pool.getLog().info("Getting lastLogon from "+p.getLdapHost());
-				LDAPConnection c = null;
-				try {
-					c = p.getConnection();
-					LDAPEntry entry2 = c.read(entry.getDN(), new String[] {"lastLogon"});
-			    	LDAPAttribute lastLogonAtt = entry2.getAttribute("lastLogon");
-			    	if (lastLogonAtt != null)
-			    	{
-			    		Long newLastLogon = Long.decode(lastLogonAtt.getStringValue());
-			    		pool.getLog().info("Last logon on "+p.getLdapHost()+"="+newLastLogon);
-			    		if (lastLogon == null || newLastLogon.compareTo(lastLogon) > 0)
-			    			lastLogon = newLastLogon;
-			    	}
-				} catch (Exception e) {
-					pool.getLog().info("Error querying lastLogon attribute on "+p.getLdapHost(), e);
-					if (fail)
-						throw new RuntimeException("Error querying lastLogon attribute on "+p.getLdapHost(), e);
-				} finally {
-					p.returnConnection();
+    		Thread th = new Thread ( new Runnable() {
+				public void run() {
+					try {
+						String name = p.getLdapHost();
+						int pos = Arrays.binarySearch(exclusionsArray,  name);
+						if ( pos >= 0 )
+							pool.getLog().info("Ignoring lastLogon from "+p.getLdapHost());
+						else
+						{
+							pool.getLog().info("Getting lastLogon from "+p.getLdapHost());
+							LDAPConnection c = null;
+							try {
+								c = p.getConnection();
+								LDAPEntry entry2 = c.read(entry.getDN(), new String[] {"lastLogon"});
+								LDAPAttribute lastLogonAtt = entry2.getAttribute("lastLogon");
+								if (lastLogonAtt != null)
+								{
+									Long newLastLogon = Long.decode(lastLogonAtt.getStringValue());
+									pool.getLog().info("Last logon on "+p.getLdapHost()+"="+newLastLogon);
+									if (lastLogon == null || newLastLogon.compareTo(lastLogon) > 0)
+										lastLogon = newLastLogon;
+								}
+							} catch (Exception e) {
+								pool.getLog().info("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+								if (fail)
+									throw new RuntimeException("Error querying lastLogon attribute on "+p.getLdapHost(), e);
+							} finally {
+								p.returnConnection();
+							}
+						}
+					} finally {
+					}
 				}
-    		}
+			});
+    		poolThread.add(th);
+    		th.start();
     	}
     	
+    	for (Thread th: poolThread)
+    	{
+    		try {
+				th.join();
+			} catch (InterruptedException e) {
+			}
+    	}
     	if (lastLogon == null)
     		return null;
     	else
@@ -328,6 +347,14 @@ public class LDAPExtensibleObject extends ExtensibleObject
 	@Override
 	public Set<String> getAttributes() {
 		return keySet();
+	}
+	
+	class RetrieveLastLogonThread extends Thread
+	{
+		public void run ()
+		{
+			
+		}
 	}
 }
 
