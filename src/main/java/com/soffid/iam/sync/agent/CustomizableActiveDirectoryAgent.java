@@ -601,58 +601,60 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		
 		String domain = searchDomainForDN (ldapUser.getDN());
 		LDAPConnection conn = getConnection(domain);
-		ArrayList<LDAPModification> modList = new ArrayList<LDAPModification>();
-		LDAPAttribute atributo;
-		byte b[] = encodePassword(password);
-		atributo = new LDAPAttribute("unicodePwd", b);
-
-		if ((ldapUser.getAttribute("unicodePwd") == null) && !replacePassword)
-			modList.add(new LDAPModification(LDAPModification.ADD, atributo));
-		else
-			modList.add(new LDAPModification(LDAPModification.REPLACE, atributo));
-		// Unlock account
-		LDAPAttribute att = ldapUser.getAttribute(USER_ACCOUNT_CONTROL);
-		int status = 0;
-		if (att != null)
-			status = Integer.decode(att.getStringValue()).intValue();
-		// Quitar el bloqueo
-		status = status & (~ADS_UF_LOCKOUT);
-		// Poner el flag de cambiar en el proximo reinicio
-		if (mustchange) {
-			if (conn.isTLS())
-				modList.add(new LDAPModification(LDAPModification.REPLACE,
-					new LDAPAttribute("pwdLastSet", "0")));
-
-			status = status | ADS_UF_PASSWORD_EXPIRED;
-			status = status & (~ADS_UF_DONT_EXPIRE_PASSWD);
-		} else {
-			status = status & (~ADS_UF_PASSWORD_EXPIRED);
-		}
-
-		if (delegation)
-			status |= ADS_UF_NORMAL_ACCOUNT | ADS_UF_DONT_EXPIRE_PASSWD
-					| ADS_UF_TRUSTED_FOR_DELEGATION;
-		else
-			status = status | ADS_UF_NORMAL_ACCOUNT;
-
-		if (!conn.isTLS()){
-			updateSamPassword (domain, accountName, password, mustchange);
-			modList.clear();
-		}
-
-		modList.add(new LDAPModification(LDAPModification.REPLACE,
-				new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
-						.toString(status))));
-		log.info("UpdateUserPassword - setting password for user {}",
-				accountName, null);
-		LDAPModification[] mods = new LDAPModification[modList.size()];
-		mods = (LDAPModification[]) modList.toArray(mods);
-		debugModifications("Modifying password ", ldapUser.getDN(), mods);
 		try {
-			conn.modify(ldapUser.getDN(), mods);
-		} catch (Exception e) {
-			handleException(e, conn);
-			throw e;
+			ArrayList<LDAPModification> modList = new ArrayList<LDAPModification>();
+			LDAPAttribute atributo;
+			byte b[] = encodePassword(password);
+			atributo = new LDAPAttribute("unicodePwd", b);
+	
+			if ((ldapUser.getAttribute("unicodePwd") == null) && !replacePassword)
+				modList.add(new LDAPModification(LDAPModification.ADD, atributo));
+			else
+				modList.add(new LDAPModification(LDAPModification.REPLACE, atributo));
+			// Unlock account
+			LDAPAttribute att = ldapUser.getAttribute(USER_ACCOUNT_CONTROL);
+			int status = 0;
+			if (att != null)
+				status = Integer.decode(att.getStringValue()).intValue();
+			// Quitar el bloqueo
+			status = status & (~ADS_UF_LOCKOUT);
+			// Poner el flag de cambiar en el proximo reinicio
+			if (mustchange) {
+				if (conn.isTLS())
+					modList.add(new LDAPModification(LDAPModification.REPLACE,
+						new LDAPAttribute("pwdLastSet", "0")));
+	
+				status = status | ADS_UF_PASSWORD_EXPIRED;
+				status = status & (~ADS_UF_DONT_EXPIRE_PASSWD);
+			} else {
+				status = status & (~ADS_UF_PASSWORD_EXPIRED);
+			}
+	
+			if (delegation)
+				status |= ADS_UF_NORMAL_ACCOUNT | ADS_UF_DONT_EXPIRE_PASSWD
+						| ADS_UF_TRUSTED_FOR_DELEGATION;
+			else
+				status = status | ADS_UF_NORMAL_ACCOUNT;
+	
+			if (!conn.isTLS()){
+				updateSamPassword (domain, accountName, password, mustchange);
+				modList.clear();
+			}
+	
+			modList.add(new LDAPModification(LDAPModification.REPLACE,
+					new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
+							.toString(status))));
+			log.info("UpdateUserPassword - setting password for user {}",
+					accountName, null);
+			LDAPModification[] mods = new LDAPModification[modList.size()];
+			mods = (LDAPModification[]) modList.toArray(mods);
+			debugModifications("Modifying password ", ldapUser.getDN(), mods);
+			try {
+				conn.modify(ldapUser.getDN(), mods);
+			} catch (Exception e) {
+				handleException(e, conn);
+				throw e;
+			}
 		} finally {
 			returnConnection(domain);
 		}
@@ -1530,18 +1532,21 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				log.info("Creating connection");
 				conn = createConnection ();
 				
-				log.info("Connecting");
-				conn.connect(host, ldapPort);
-
-				LDAPConstraints constraints = conn.getConstraints();
-				constraints.setReferralFollowing(false);
-				conn.setConstraints(constraints);
-
-				log.info("Binding");
-
-				conn.bind(ldapVersion, entry.getDN(), password.getPassword()
-						.getBytes("UTF8"));
-				conn.disconnect();
+				try {
+					log.info("Connecting");
+					conn.connect(host, ldapPort);
+	
+					LDAPConstraints constraints = conn.getConstraints();
+					constraints.setReferralFollowing(false);
+					conn.setConstraints(constraints);
+	
+					log.info("Binding");
+	
+					conn.bind(ldapVersion, entry.getDN(), password.getPassword()
+							.getBytes("UTF8"));
+				} finally {
+					conn.disconnect();
+				}
 				return true;
 			} catch (UnsupportedEncodingException e) {
 			} catch (Exception e) {
