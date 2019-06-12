@@ -67,6 +67,7 @@ import com.soffid.iam.api.AccountStatus;
 import com.soffid.iam.api.Group;
 import com.soffid.iam.remote.RemoteServiceLocator;
 import com.soffid.iam.service.AccountService;
+import com.soffid.iam.sync.intf.AccessLogMgr;
 import com.soffid.msrpc.samr.SamrService;
 
 import es.caib.seycon.agent.WindowsNTBDCAgent;
@@ -122,7 +123,8 @@ import es.caib.seycon.util.TimedOutException;
 
 public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		implements ExtensibleObjectMgr, UserMgr, ReconcileMgr2, RoleMgr,
-		GroupMgr, KerberosAgent, AuthoritativeIdentitySource2 {
+		GroupMgr, KerberosAgent, AuthoritativeIdentitySource2,
+		AccessLogMgr {
 
 	private static final String RELATIVE_DN = "relativeBaseDn";
 
@@ -301,6 +303,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		LDAPConnection conn = null;
 		try {
 			conn = getConnection(mainDomain);
+			if ( ! conn.isTLS())
+				log.warn("Warning: Using plain LDAP sockets. The connection is not secure.");
 			if (multiDomain)
 			{
 				searchDomains (conn, excludeDomains);
@@ -424,7 +428,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				return mainDomain;
 			}
 			String shortName = dn.substring(dn.indexOf("dc=")+3);
-			shortName = shortName.substring(0, shortName.indexOf(","));
+			if (shortName.contains(","))
+				shortName = shortName.substring(0, shortName.indexOf(","));
 			while (query.hasMore()) {
 				try {
 					LDAPEntry entry = query.next();
@@ -452,6 +457,63 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 		
 	}
+
+    private void createChildPools(LDAPPool pool2) throws InternalErrorException {
+		LDAPConnection conn;
+		LinkedList<LDAPPool> children = new LinkedList<LDAPPool>();
+		try {
+			log.info("Resolving domain controllers for "+pool2.getLdapHost());
+			
+			conn = pool2.getConnection();
+			LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+			LDAPSearchResults query = conn.search(pool2.getBaseDN(),
+						LDAPConnection.SCOPE_SUB, 
+						"(&(objectCategory=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))",
+						null, false,
+						constraints);
+			while (query.hasMore()) {
+				try {
+					LDAPEntry entry = query.next();
+					LDAPAttribute dnsName = entry.getAttribute("dNSHostName");
+					if (dnsName != null)
+					{
+						String hostName = dnsName.getStringValue();
+						log.info("  Found domain controller: "+hostName);
+						children.add( createChildPool(pool2.getBaseDN(), hostName, pool2));
+					}
+				} catch (LDAPReferralException e)
+				{
+				}
+			}			
+
+		} catch (UnknownHostException e) {
+			log.warn("Error resolving host "+pool2.getLdapHost(), e);
+		} catch (LDAPException e1) {
+			log.warn("Error querying domain controllers ", e1);
+		} catch (Exception e2) {
+			throw new InternalErrorException("Error querying domain controllers", e2);
+		} finally {
+			pool2.returnConnection();
+		}
+		pool2.setChildPools(children);
+	}
+
+	private LDAPPool createChildPool(String base, String host, LDAPPool parent) {
+		LDAPPool pool = new LDAPPool();
+		pool.setUseSsl( false );
+		pool.setBaseDN( base );
+		pool.setLdapHost(host);
+		pool.setLdapPort( LDAPConnection.DEFAULT_PORT );
+		pool.setLdapVersion(parent.getLdapVersion());
+		pool.setLoginDN(parent.getLoginDN());
+		pool.setPassword(parent.getPassword());
+		pool.setAlwaysTrust(parent.isAlwaysTrust());
+		pool.setFollowReferrals(parent.isFollowReferrals());
+		pool.setDebug (parent.isDebug());
+		pool.setLog(parent.getLog());
+		return pool;
+	}
+
 
 	protected void handleException(Exception e, LDAPConnection conn) {
 		try {
@@ -493,7 +555,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					try {
 						LDAPUrl url = new LDAPUrl(r);
 						String server = url.getHost().toLowerCase();
-						String lastPart = server.substring(0, server.indexOf("."));
+						String lastPart = server.contains(".") ? server.substring(0, server.indexOf(".")) : server;
 						String dn = url.getDN().toLowerCase();
 						if ( Arrays.binarySearch(excluded, dn.toLowerCase()) < 0 &&
 								Arrays.binarySearch(excluded, server) < 0 &&
@@ -662,52 +724,56 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	final SMBClient smbClient = new SMBClient();
 	private void updateSamPassword(String domain, String accountName, Password password, boolean mustchange) throws IOException {
-		String host = domainHost.get(domain);
+		String hosts = domainHost.get(domain);
 		if (accountName.contains("\\"))
 			accountName = accountName.substring(accountName.indexOf("\\")+1);
 //		String ntDomain = domainToShortName.get(domain);
-		final Connection smbConnection = smbClient.connect(host == null ? domain: host);
-		try {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
-		    		this.samAccountName, this.password.getPassword().toCharArray(), this.samDomainName);
-		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
-		    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
-		    SamrService sam = new SamrService(transport2, session);
-		    ServerHandle server = sam.openServer();
-		    MembershipWithName[] domains = sam.getDomainsForServer(server);
-		    for (MembershipWithName n: domains)
-		    {
-			    SID sid = sam.getSIDForDomain(server, n.getName());
-		    	DomainHandle domainHandle = sam.openDomain(server, sid);
-		    	if (debugEnabled)
-		    		log.info("Searching user "+accountName+" at SAM domain "+n.getName());
-		    	int [] r;
-		    	try {
-		    		r = sam.lookupNames(domainHandle, new String[] {accountName});
-		    	} catch (RPCException e) {
-		    		if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED)
-		    			continue;
-		    		else
-		    			throw e;
-		    	}
-		    	for (int i: r) {
-		    		if (debugEnabled)
-		    			log.info("Opening user "+accountName+" at SAM domain "+n.getName());
-		    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
-		    		try {
-			    		UserAllInformation userAllInformation = sam.getUserAllInformation(userHandle);
+		if (hosts == null) hosts = domain;
+		for (String host: hosts.split(" +"))
+		{
+			final Connection smbConnection = smbClient.connect(host == null ? domain: host);
+			try {
+			    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+			    		this.samAccountName, this.password.getPassword().toCharArray(), this.samDomainName);
+			    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+			    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+			    SamrService sam = new SamrService(transport2, session);
+			    ServerHandle server = sam.openServer();
+			    MembershipWithName[] domains = sam.getDomainsForServer(server);
+			    for (MembershipWithName n: domains)
+			    {
+				    SID sid = sam.getSIDForDomain(server, n.getName());
+			    	DomainHandle domainHandle = sam.openDomain(server, sid);
+			    	if (debugEnabled)
+			    		log.info("Searching user "+accountName+" at SAM domain "+n.getName());
+			    	int [] r;
+			    	try {
+			    		r = sam.lookupNames(domainHandle, new String[] {accountName});
+			    	} catch (RPCException e) {
+			    		if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED)
+			    			continue;
+			    		else
+			    			throw e;
+			    	}
+			    	for (int i: r) {
 			    		if (debugEnabled)
-			    			log.info("Setting password for user "+accountName+" at SAM domain "+n.getName());
-						sam.setPasswordEx(userHandle, password.getPassword(), mustchange);
-		    		} finally {
-		    			sam.closeHandle(userHandle);
-		    		}
-		    	}		    	
-		    }
-		} finally {
-			smbConnection.close();
+			    			log.info("Opening user "+accountName+" at SAM domain "+n.getName());
+			    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
+			    		try {
+				    		UserAllInformation userAllInformation = sam.getUserAllInformation(userHandle);
+				    		if (debugEnabled)
+				    			log.info("Setting password for user "+accountName+" at SAM domain "+n.getName());
+							sam.setPasswordEx(userHandle, password.getPassword(), mustchange);
+							return;
+			    		} finally {
+			    			sam.closeHandle(userHandle);
+			    		}
+			    	}		    	
+			    }
+			} finally {
+				smbConnection.close();
+			}
 		}
-
 	}
 
 
@@ -1715,6 +1781,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				{
 					// Ignore
 				}
+				catch (LDAPException e2)
+				{
+					if (e2.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
+						// Ignore
+					} else {
+						log.debug("LDAP Exception: "+e2.toString());
+						log.debug("ERROR MESSAGE: "+e2.getLDAPErrorMessage());
+						log.debug("LOCALIZED MESSAGE: "+e2.getLocalizedMessage());
+						throw e2;
+					}
+				}
 				return result;
 			} finally {
 				returnConnection(domain);
@@ -1935,6 +2012,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 										
 										accounts.add(generateAccountName(entry, mapping, "accountName"));
 									} catch (LDAPReferralException e) {
+									} catch (LDAPException e) {
+										if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
+											// Ignore
+										} else {
+											log.debug("LDAP Exception: "+e.toString());
+											log.debug("ERROR MESSAGE: "+e.getLDAPErrorMessage());
+											log.debug("LOCALIZED MESSAGE: "+e.getLocalizedMessage());
+											throw e;
+										}
 									}
 								}
 	
@@ -1968,7 +2054,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		return accounts;
 	}
 
-	private String generateAccountName(LDAPEntry entry, ExtensibleObjectMapping mapping, String attName) throws InternalErrorException {
+	public String generateAccountName(LDAPEntry entry, ExtensibleObjectMapping mapping, String attName) throws InternalErrorException {
 		
 		String accountName = null;
 		if (mapping != null)
@@ -2611,61 +2697,70 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 		if (eo.getObjects().isEmpty())
 			return;
-
-		LDAPEntry groupEntry = searchSamAccount(eo.getObjects().get(0),
-				group);
-
-		// No existing group
-		if (groupEntry == null) {
-			if (soffidGroup != null)
-				updateGroup(group, soffidGroup);
-			if (soffidRole != null)
-				updateRole(soffidRole);
-			groupEntry = searchSamAccount(eo.getObjects().get(0), group);
-		}
-
-		if (groupEntry != null
-				&& preInsertTrigger(group, user, groupEntry, userEntry)) {
-
-			String domain = searchDomainForDN(groupEntry.getDN());
-			if (multiDomain) { 
-				String domain2 = searchDomainForDN(userEntry.getDN());
-				if (! domain2.equals(domain))
-				{
-					LDAPAttribute groupTypeAtt = groupEntry.getAttribute("groupType");
-					if (groupTypeAtt != null && groupTypeAtt.getStringValue() != null)
-					{
-						long groupType = Long.decode(groupTypeAtt.getStringValue()).longValue();
-						if (groupType < 0) groupType += 2147483648L;
-						if ( (groupType & 8) == 0 && (groupType & 4) == 0 )
+		
+		for (ExtensibleObject object: eo.getObjects())
+		{
+			String objectClass = vom.toSingleString( object.getAttribute("objectClass") );
+			if (objectClass.toLowerCase().contains("group")) // Ignore OUs
+			{
+				LDAPEntry groupEntry = searchSamAccount(eo.getObjects().get(0),
+						group);
+				
+				// No existing group
+				if (groupEntry == null) {
+					if (soffidGroup != null)
+						updateGroup(group, soffidGroup);
+					if (soffidRole != null)
+						updateRole(soffidRole);
+					groupEntry = searchSamAccount(eo.getObjects().get(0), group);
+				}
+				
+				if (groupEntry != null
+						&& preInsertTrigger(group, user, groupEntry, userEntry)) {
+					
+					String domain = searchDomainForDN(groupEntry.getDN());
+					if (multiDomain) { 
+						String domain2 = searchDomainForDN(userEntry.getDN());
+						if (! domain2.equals(domain))
 						{
-							log.warn("Cannot asign group "+groupEntry.getDN()+" to "+userEntry.getDN()+": Group has not UNIVERSAL nor LOCAL scope");
-							return;
+							LDAPAttribute groupTypeAtt = groupEntry.getAttribute("groupType");
+							if (groupTypeAtt != null && groupTypeAtt.getStringValue() != null)
+							{
+								long groupType = Long.decode(groupTypeAtt.getStringValue()).longValue();
+								if (groupType < 0) groupType += 2147483648L;
+								if ( (groupType & 8) == 0 && (groupType & 4) == 0 )
+								{
+									log.warn("Cannot asign group "+groupEntry.getDN()+" to "+userEntry.getDN()+": Group has not UNIVERSAL nor LOCAL scope");
+									return;
+								}
+							}
 						}
 					}
-				}
-			}
-			log.info("Adding user {} to group {}", user, group);
-			LDAPConnection conn = getConnection(domain);
-			try {
-				LDAPModification ldapModification = new LDAPModification(
-						LDAPModification.ADD, new LDAPAttribute("member",
-								userEntry.getDN()));
-				debugModifications("Adding group member ", groupEntry.getDN(),
-						new LDAPModification[] { ldapModification });
-				conn.modify(groupEntry.getDN(), ldapModification);
-				log.info("Added", null, null);
-				postInsertTrigger(group, user, groupEntry, userEntry);
-			} catch (LDAPException e) {
-				handleException(e, conn);
-				// Ignore when adding a new group membership that is included as primary group id
-				if (e.getResultCode() != LDAPException.ENTRY_ALREADY_EXISTS)
-					throw e;
-			} finally {
-				returnConnection(domain);
-			}
+					log.info("Adding user {} to group {}", user, group);
+					LDAPConnection conn = getConnection(domain);
+					try {
+						LDAPModification ldapModification = new LDAPModification(
+								LDAPModification.ADD, new LDAPAttribute("member",
+										userEntry.getDN()));
+						debugModifications("Adding group member ", groupEntry.getDN(),
+								new LDAPModification[] { ldapModification });
+						conn.modify(groupEntry.getDN(), ldapModification);
+						log.info("Added", null, null);
+						postInsertTrigger(group, user, groupEntry, userEntry);
+					} catch (LDAPException e) {
+						handleException(e, conn);
+						// Ignore when adding a new group membership that is included as primary group id
+						if (e.getResultCode() != LDAPException.ENTRY_ALREADY_EXISTS)
+							throw e;
+					} finally {
+						returnConnection(domain);
+					}
 					
+				}
+				
+			}
 		}
+
 	}
 
 	public void updateUser(String accountName, String description)
@@ -3743,8 +3838,59 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 
+	static Object lock = new Object();
+	static Thread lastLogonThread = null;
+	Iterator<String> domainsIterator = null;
+	Iterator<LDAPPool> controllersIterator = null;
+	private String currentDomain;
+	long lastIteration = 0;
+	
 	@Override
 	public Collection<LogEntry> getLogFromDate(Date From) throws RemoteException, InternalErrorException {
+		synchronized (lock)
+		{
+			if (lastLogonThread == null || ! lastLogonThread.isAlive())
+			{
+				if (controllersIterator == null || ! controllersIterator.hasNext())
+				{
+					if (domainsIterator == null || ! domainsIterator.hasNext())
+					{
+						long now = System.currentTimeMillis();
+						if (now - lastIteration < 60 * 60 * 1000) // 1 hour
+							return new LinkedList<LogEntry>();
+						lastIteration = now;
+						domainsIterator = domainHost.keySet().iterator();
+					}
+					currentDomain = domainsIterator.next();
+					LDAPPool pool = getPool(currentDomain);
+					List<LDAPPool> children = pool.getChildPools();
+					if (children == null)
+						createChildPools(pool);
+					controllersIterator = pool.getChildPools().iterator();
+				}
+				if (controllersIterator != null && controllersIterator.hasNext())
+				{
+					LDAPPool domainControllerPool = controllersIterator.next();
+					LastLoginLoader l = new LastLoginLoader();
+					l.setAgentName(getCodi());
+					l.setBaseDn( currentDomain );
+					l.setDebugEnabled(debugEnabled);
+					l.setPool(domainControllerPool);
+					l.setDomainController(domainControllerPool.getLdapHost());
+					l.setTenant( getDispatcher().getTenant() );
+					ExtensibleObjectMapping m = null;
+					for (ExtensibleObjectMapping mapping: objectMappings)
+					{
+						if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_ACCOUNT))
+							m = mapping;
+					}
+					l.setMaping (m);
+					l.setAgent( this  );
+					lastLogonThread = new Thread (l);
+					lastLogonThread.start();
+				}
+			}
+		}
 		return new LinkedList<LogEntry>();
 	}
 
