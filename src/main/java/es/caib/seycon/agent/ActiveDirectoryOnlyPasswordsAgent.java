@@ -890,4 +890,10 @@ public class ActiveDirectoryOnlyPasswordsAgent extends WindowsNTBDCAgent impleme
 		}
 		return sb.toString();
 	}
+
+	public String parseKerberosToken(String serverPrincipal, byte[] keytab, byte[] token)
+			throws InternalErrorException {
+		return null;
+	}
+
 }

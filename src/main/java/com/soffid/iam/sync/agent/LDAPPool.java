@@ -19,6 +19,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.apache.xml.security.stax.ext.InboundSecurityContext;
 import org.slf4j.Logger;
 
 import com.novell.ldap.LDAPAuthHandler;
@@ -157,7 +158,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 	}
 
 	public void setPassword(Password password) {
-		if (this.password == null || ! this.password.equals(password))
+		if (this.password == null || ! this.password.getPassword().equals(password.getPassword()))
 		{
 			this.password = password;
 			reconfigure();
@@ -169,6 +170,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		Exception lastException = null;
 		for (String host: ldapHosts)
 		{
+//			log.info("============ Creating connection to "+host);
+//			diag(log);
 			try {
 				return createConnection(host);
 			} catch (Exception e) {
@@ -232,6 +235,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			conn = new LDAPConnection(ldapSecureSocketFactory);
 		} else  {
 			conn = new LDAPConnection();
+			if (debug)
+				log.warn("Created plain connection "+baseDN, new Exception());
 		}
 		
 		try 
@@ -266,8 +271,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			conn.bind(ldapVersion, loginDN, password.getPassword()
 					.getBytes("UTF8"));
 			conn.setConstraints(constraints);
-//			if (debug)
-//				log.info("Created connection "+conn.toString());
 		}
 		catch (UnsupportedEncodingException e)
 		{
@@ -276,6 +279,8 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		}
 		catch (LDAPException e)
 		{
+			if (conn != null)
+				conn.disconnect();
 			throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
 					+ loginDN + ")" + e.toString(), e);
 		}
@@ -290,16 +295,25 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	@Override
 	protected void closeConnection(LDAPConnection connection) throws LDAPException {
+		log.warn("Closing connection "+connection.getHost(), new Exception());
 		connection.disconnect();
 	}
 
 	public void setAlwaysTrust(boolean trustEveryThing) {
-		this.alwaysTrust = true;
+		if (this.alwaysTrust != trustEveryThing)
+		{
+			this.alwaysTrust = trustEveryThing;
+			reconfigure();
+		}
 		
 	}
 
 	public void setFollowReferrals(boolean followReferrals) {
-		this.followReferrals = followReferrals;
+		if (this.followReferrals != followReferrals)
+		{
+			this.followReferrals = followReferrals;
+			reconfigure();
+		}
 	}
 
 	public List<LDAPPool> getChildPools() {

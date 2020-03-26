@@ -1,6 +1,7 @@
 package com.soffid.iam.sync.agent2;
 
 import java.rmi.RemoteException;
+import java.util.List;
 
 import com.soffid.iam.api.CustomObject;
 
@@ -62,8 +63,8 @@ public class SSOActiveDirectoryAgent extends CustomizableActiveDirectoryAgent {
 	}
 
 	@Override
-	protected void updateObject(String accountName, ExtensibleObject object,
-			ExtensibleObject source) throws Exception {
+	protected void updateObject(String accountName, String oldAccountName, ExtensibleObject object,
+			ExtensibleObject source, List<String[]> changes) throws Exception {
 		// Nothing to do
 	}
 }

@@ -2818,4 +2818,11 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 		}
 		return sb.toString();
 	}
+
+	public String parseKerberosToken(String serverPrincipal, byte[] keytab, byte[] token)
+			throws InternalErrorException {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
 }
