@@ -9,9 +9,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.bouncycastle.util.encoders.Hex;
 
 public class AttributesEncoder {
+	Log log = LogFactory.getLog(getClass());
 	byte data[] = null;
 	public AttributesEncoder (byte data []) throws UnsupportedEncodingException
 	{
@@ -38,7 +41,8 @@ public class AttributesEncoder {
 			int character = toShort(96);
 			if (character != 'P')
 			{
-				throw new InvalidParameterException("Data corrupt. Missing data signature");
+				log.info("Data corrupt reading attributes value. Missing data signature");
+				return result;
 			}
 			int count = toShort(98);
 			int pos = 100;
