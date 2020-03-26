@@ -41,6 +41,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 			keys.add(att.getName());
 		}
 		keys.add("dn");
+		keys.add("immutableId");
 		return keys;
 	}
 	
@@ -52,6 +53,8 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		else if ("lastLogon".equals(key))
 			return true;
 		else if ("lastLogonIgnoreServers".equals(key))
+			return true;
+		else if ("immutableId".equals(key))
 			return true;
 		else
 			return entry.getAttribute((String)key) != null;
@@ -87,6 +90,15 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		
 		if ("lastLogonStrict".equals(attribute))
 			return calculateLastLogon (true);
+		
+		if ("immutableId".equals(attribute))
+		{
+			LDAPAttribute att = entry.getAttribute("objectGUID");
+			if (att == null)
+				return null;
+			else
+				return Base64.encodeBytes(att.getByteValue());
+		}
 
 		LDAPAttribute att = entry.getAttribute(attribute);
 		if (att == null)
@@ -124,7 +136,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 	}
 
 	private String parseGUID(byte[] byteValue) {
-		return UUID.nameUUIDFromBytes(byteValue).toString();
+		return GUIDParser.format(byteValue);
 	}
 
 	Long lastLogon = null;

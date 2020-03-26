@@ -43,7 +43,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 				.generateObjects(sourceObject);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			updateObjects(obj.getName(), obj.getName(), objects, sourceObject);
+			updateObjects(obj.getName(), obj.getName(), objects, sourceObject, null /*always apply */);
 		} catch (InternalErrorException e) {
 			throw e;
 		} catch (Exception e) {
@@ -61,7 +61,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 		objects = objectTranslator.generateObjects(sourceObject = new CustomExtensibleObject(obj, getServer()));
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			removeObjects(null, objects, sourceObject);
+			removeObjects(null, objects, sourceObject, null /*always apply */);
 		} catch (InternalErrorException e) {
 			throw e;
 		} catch (Exception e) {
@@ -83,7 +83,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 			if (searches == null)
 			{
 				searches = new Stack<CustomizableActiveDirectoryAgent.LdapSearch>();
-				for (String domain: domainToShortName.keySet())
+				for (String domain: domainHost.keySet())
 				{
 					for (ExtensibleObjectMapping mapping : objectMappings) {
 						if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_USER) ||
@@ -307,7 +307,8 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 		}
 	}
 
-	protected void parseCustomObject(Collection<AuthoritativeChange> changes, ExtensibleObject object)
+	@Override
+	protected AuthoritativeChange parseCustomObjectChange(ExtensibleObject object)
 			throws InternalErrorException {
 		CustomObject obj = vom.parseCustomObject(object);
 		if (obj != null) {
@@ -320,7 +321,9 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 			id.setDate(new Date());
 
 			change.setObject(obj);
-			changes.add(change);
+			return change;
 		}
+		else
+			return null;
 	}
 }

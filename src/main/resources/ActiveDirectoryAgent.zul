@@ -4,97 +4,186 @@
 <?component name="input_etiqueta" macro-uri="comu/input_etiqueta.zul"?>
 <?component name="input_password" macro-uri="comu/input_password.zul"?>
 
-<grid width="99%">
-	<columns visible="false"><column width="14%"/><column/> </columns>
-	<rows>
-		<row>
-			<input_etiqueta value="Hostname" />
-			<hbox width="90%">
-				<input_dada bind="@param0" lectura="${!canModifyAgent}"
-					width_custom="98%" />
-			</hbox>
-		</row>
-		<row>
-			<input_etiqueta value="LDAP base DN" />
-			<hbox width="90%">
-				<input_dada bind="@param1" lectura="${!canModifyAgent}"
-					width_custom="98%" />
-			</hbox>
-		</row>
-		<row>
-			<input_etiqueta value="Principal name" />
-			<hbox width="90%">
-				<input_dada bind="@param2" lectura="${!canModifyAgent}"
-					width_custom="98%" />
-			</hbox>
-		</row>
-		<row>
-			<input_etiqueta value="Password" />
-			<hbox width="90%">
-				<input_password bind="@param3" lectura="${!canModifyAgent}"
-					width_custom="98%" />
-			</hbox>
-		</row>
-		<row>
-			<input_etiqueta value="Enable debug" />
-			<listbox bind="@param7" mold="select"  disabled="{!canModifyAgent}" width="100px">
-				<listitem value="false">
-					<listcell label="No"/>
-				</listitem>
-				<listitem value="true">
-					<listcell label="Yes"/>
-				</listitem>
-			</listbox>
-		</row>
-		<row>
-			<input_etiqueta value="Accepted certificates" />
-			<listbox bind="@param8" mold="select"  disabled="{!canModifyAgent}" width="100px">
-				<listitem value="false">
-					<listcell label="Only trusted certificates"/>
-				</listitem>
-				<listitem value="true">
-					<listcell label="Any (insecure)"/>
-				</listitem>
-			</listbox>
-		</row>
-		<row>
-			<input_etiqueta value="Follow referrals" />
-			<listbox bind="@param9" mold="select"  disabled="{!canModifyAgent}" width="100px">
-				<listitem value="false">
-					<listcell label="Don't"/>
-				</listitem>
-				<listitem value="true">
-					<listcell label="Yes"/>
-				</listitem>
-			</listbox>
-		</row>
-		<row>
-			<input_etiqueta value="Manage child domains" />
-			<div>
-				<listbox bind="@param4" mold="select"
-					disabled="{!canModifyAgent}" width="100px">
+<zk>
+	<zscript><![CDATA[
+		String[] attributes = new String[] {
+				"realTimeLastLogin",
+				"realTimeSource"
+		};
+		void updateBlob () {
+			String t = "";
+			for ( String attribute: attributes)
+			{
+				Component item = configurationGrid.getFellow (attribute);
+				String v = null;
+				if (item instanceof Listbox)
+				{
+					if (item.getSelectedItem() != null)
+						v = item.getSelectedItem().getValue();
+				}
+				else
+					v = item.getValue();
+				if ( v != null)
+				{
+					if (!t.isEmpty()) t = t + "&";
+					t = t + 
+						java.net.URLEncoder.encode(attribute, "UTF-8") + "=" + 
+						java.net.URLEncoder.encode( v, "UTF-8");
+				}
+			}
+			
+			es.caib.zkib.datasource.XPathUtils.setValue(configurationGrid,"blobParam", t.getBytes("UTF-8"));
+		}
+		void loadBlob () {
+		    try {
+				byte[] data = es.caib.zkib.datasource.XPathUtils.getValue(configurationGrid, "blobParam");
+				if (data != null)
+				{
+					String t = new String ( data,"UTF-8"); 
+					Map m = new HashMap();
+					if (t != null)
+					{
+						for (String tag: t.split("&")) {
+							int i = tag.indexOf("=");
+							String attribute = java.net.URLDecoder.decode(tag.substring(0, i), "UTF-8");
+							Component c = configurationGrid.getFellowIfAny (attribute);
+							if (c != null)
+							{
+								String v = i > 0 ? java.net.URLDecoder.decode(tag.substring(i+1), "UTF-8"): null;
+								if (c instanceof Listbox)
+								{
+									c.setSelectedItem(null);
+									for ( item: c.getItems()) {
+										if (item.getValue() != null && item.getValue().equals(v))
+											c.setSelectedItem ( item );
+									}
+								}
+								else
+									c.setValue ( v );
+	
+							}
+						}
+					}
+				}
+		    } catch (Exception e) {
+		    }
+		}
+	]]>
+	</zscript>
+	<grid width="99%" onCreate="loadBlob()" id="configurationGrid">
+		<columns visible="false"><column width="14%"/><column/> </columns>
+		<rows>
+			<row>
+				<input_etiqueta value="Hostname" />
+				<hbox width="90%">
+					<input_dada bind="@param0" lectura="${!canModifyAgent}"
+						width_custom="98%" />
+				</hbox>
+			</row>
+			<row>
+				<input_etiqueta value="LDAP base DN" />
+				<hbox width="90%">
+					<input_dada bind="@param1" lectura="${!canModifyAgent}"
+						width_custom="98%" />
+				</hbox>
+			</row>
+			<row>
+				<input_etiqueta value="Principal name" />
+				<hbox width="90%">
+					<input_dada bind="@param2" lectura="${!canModifyAgent}"
+						width_custom="98%" />
+				</hbox>
+			</row>
+			<row>
+				<input_etiqueta value="Password" />
+				<hbox width="90%">
+					<input_password bind="@param3" lectura="${!canModifyAgent}"
+						width_custom="98%" />
+				</hbox>
+			</row>
+			<row>
+				<input_etiqueta value="Enable debug" />
+				<listbox bind="@param7" mold="select"  disabled="{!canModifyAgent}" width="100px">
 					<listitem value="false">
-						<listcell label="No" />
+						<listcell label="No"/>
 					</listitem>
 					<listitem value="true">
-						<listcell label="Yes" />
+						<listcell label="Yes"/>
 					</listitem>
 				</listbox>
-				<label value=" Domains to ignore: "></label>
-				<input_dada bind="@param6" lectura="${!canModifyAgent}"
-					width_custom="400px" />
-			</div>
-		</row>
-		<row>
-			<input_etiqueta value="Create OUs when needed" />
-			<listbox bind="@param5" mold="select"  disabled="{!canModifyAgent}" width="100px">
-				<listitem value="true">
-					<listcell label="Yes"/>
-				</listitem>
-				<listitem value="false">
-					<listcell label="No"/>
-				</listitem>
-			</listbox>
-		</row>
-	</rows>
-</grid>
+			</row>
+			<row>
+				<input_etiqueta value="Accepted certificates" />
+				<listbox bind="@param8" mold="select"  disabled="{!canModifyAgent}" width="100px">
+					<listitem value="false">
+						<listcell label="Only trusted certificates"/>
+					</listitem>
+					<listitem value="true">
+						<listcell label="Any (insecure)"/>
+					</listitem>
+				</listbox>
+			</row>
+			<row>
+				<input_etiqueta value="Follow referrals" />
+				<listbox bind="@param9" mold="select"  disabled="{!canModifyAgent}" width="100px">
+					<listitem value="false">
+						<listcell label="Don't"/>
+					</listitem>
+					<listitem value="true">
+						<listcell label="Yes"/>
+					</listitem>
+				</listbox>
+			</row>
+			<row>
+				<input_etiqueta value="Manage child domains" />
+				<div>
+					<listbox bind="@param4" mold="select"
+						disabled="{!canModifyAgent}" width="100px">
+						<listitem value="false">
+							<listcell label="No" />
+						</listitem>
+						<listitem value="true">
+							<listcell label="Yes" />
+						</listitem>
+					</listbox>
+					<label value=" Domains to ignore: "></label>
+					<input_dada bind="@param6" lectura="${!canModifyAgent}"
+						width_custom="400px" />
+				</div>
+			</row>
+			<row>
+				<input_etiqueta value="Create OUs when needed" />
+				<listbox bind="@param5" mold="select"  disabled="{!canModifyAgent}" width="100px">
+					<listitem value="true">
+						<listcell label="Yes"/>
+					</listitem>
+					<listitem value="false">
+						<listcell label="No"/>
+					</listitem>
+				</listbox>
+			</row>
+			<row>
+				<input_etiqueta value="Real time load last login attribute" />
+				<listbox id="realTimeLastLogin"  disabled="{!canModifyAgent}" width="100px" mold="select" onSelect="updateBlob()">
+					<listitem value="false">
+						<listcell label="No"/>
+					</listitem>
+					<listitem value="true">
+						<listcell label="Yes"/>
+					</listitem>
+				</listbox>
+			</row>
+			<row>
+				<input_etiqueta value="Real time load identity changes" />
+				<listbox id="realTimeSource"  disabled="{!canModifyAgent}" width="100px" mold="select" onSelect="updateBlob()">
+					<listitem value="false">
+						<listcell label="No"/>
+					</listitem>
+					<listitem value="true">
+						<listcell label="Yes"/>
+					</listitem>
+				</listbox>
+			</row>
+		</rows>
+	</grid>
+</zk>

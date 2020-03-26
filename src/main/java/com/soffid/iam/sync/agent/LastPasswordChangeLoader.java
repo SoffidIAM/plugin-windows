@@ -28,12 +28,11 @@ import com.soffid.iam.service.ConfigurationService;
 import es.caib.seycon.ng.sync.intf.ExtensibleObjectMapping;
 import es.caib.seycon.ng.utils.Security;
 
-public class LastLoginLoader implements Runnable {
+public class LastPasswordChangeLoader implements Runnable {
 	Log log = LogFactory.getLog(getClass());
 	
 	String agentName;
 	LDAPPool pool;
-	String domainController;
 	String baseDn;
 	boolean debugEnabled;
 
@@ -48,12 +47,6 @@ public class LastLoginLoader implements Runnable {
 	}
 	public void setPool(LDAPPool pool) {
 		this.pool = pool;
-	}
-	public String getDomainController() {
-		return domainController;
-	}
-	public void setDomainController(String domainController) {
-		this.domainController = domainController;
 	}
 	
 	public String getAgentName() {
@@ -88,7 +81,7 @@ public class LastLoginLoader implements Runnable {
 			AccountService accountService = ServiceLocator.instance().getAccountService() ;
 			ConfigurationService configService = ServiceLocator.instance().getConfigurationService();
 
-			String paramName = "soffid.lastLogin."+domainController;
+			String paramName = "soffid.lastPasswordChange."+agentName;
 			Configuration cfg = configService.findParameterByNameAndNetworkName(paramName, null);
 			String lastLoad = "1";
 			if (cfg != null && cfg.getValue() != null)
@@ -96,7 +89,7 @@ public class LastLoginLoader implements Runnable {
 			DateFormat dateFormat = SimpleDateFormat.getDateTimeInstance(SimpleDateFormat.SHORT, SimpleDateFormat.SHORT);
 			long start = System.currentTimeMillis();
 			String query;
-			query = "(&(objectClass=user)(!(objectClass=computer))(lastLogon>="+lastLoad+"))";
+			query = "(&(objectClass=user)(!(objectClass=computer))(pwdLastSet>="+lastLoad+"))";
 			LDAPPagedResultsControl pageResult = new LDAPPagedResultsControl(
 								conn.getSearchConstraints().getMaxResults(),
 								false);
@@ -104,29 +97,29 @@ public class LastLoginLoader implements Runnable {
 			do {
 				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getSearchConstraints());
 				constraints.setControls(pageResult);
-				log.info("Looking for last logon in "+ domainController +" LDAP QUERY="
+				log.info("Looking for last password change in "+ agentName +" LDAP QUERY="
 										+ query + " on " + baseDn);
 				LDAPSearchResults search = conn.search(baseDn,
 						LDAPConnection.SCOPE_SUB, query,
-						new String[] {"sAMAccountName","lastLogon"}, false, constraints);
+						new String[] {"sAMAccountName","pwdLastSet"}, false, constraints);
 				while (search.hasMore()) {
 					try {
 						LDAPEntry entry = search.next();
 						String accountName = agent.generateAccountName(entry, mapping, "accountName");
-						LDAPAttribute att = entry.getAttribute("lastLogon");
+						LDAPAttribute att = entry.getAttribute("pwdLastSet");
 						if ( att != null)
 						{
 							Date d = lastLogonToDate(att.getStringValue());
 							if (d != null)
 							{
 								Account acc = accountService.findAccount(accountName, agentName);
-								if ( acc != null && (acc.getLastLogin() == null || d.after(acc.getLastLogin().getTime())))
+								if ( acc != null && (acc.getLastPasswordSet() == null || d.after(acc.getLastPasswordSet().getTime())))
 								{
 									Calendar c = Calendar.getInstance();
 									c.setTime(d);
-									acc.setLastLogin(c);
+									acc.setLastPasswordSet(c);
 									if (debugEnabled) {
-										log.info("Account "+accountName+" last logon on server "+domainController+" = "+dateFormat.format(c.getTime()));
+										log.info("Account "+accountName+" last password set = "+dateFormat.format(c.getTime()));
 									}
 									accountService.updateAccount(acc);
 								}
@@ -177,7 +170,7 @@ public class LastLoginLoader implements Runnable {
 				configService.update(cfg);
 			}
 		} catch (Exception e) {
-			log.warn("Error retrieving last logon attributes for domain controller "+domainController, e);
+			log.warn("Error retrieving last password change attribute for domain "+agentName, e);
 		} finally {
 			pool.returnConnection();
 		}
