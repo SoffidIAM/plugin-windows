@@ -774,6 +774,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			modList.add(new LDAPModification(LDAPModification.REPLACE,
 					new LDAPAttribute(USER_ACCOUNT_CONTROL, Integer
 							.toString(status))));
+			
+			// Unlock the user
+			if ( ldapUser.getAttribute("lockoutTime") != null &&
+				!ldapUser.getAttribute("lockoutTime").getStringValue().equals("0"))
+				
+				modList.add(new LDAPModification(LDAPModification.REPLACE,
+					new LDAPAttribute("lockoutTime", "0")));
+			
 			log.info("UpdateUserPassword - setting password for user {}",
 					accountName, null);
 			LDAPModification[] mods = new LDAPModification[modList.size()];
@@ -2744,7 +2752,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			// Remove 'disable'
 			if (enable)
 			{
-	
 				status = status & (~ADS_UF_ACCOUNTDISABLE);
 				// Remove 'lockout'
 				status = status & (~ADS_UF_LOCKOUT);
@@ -2807,6 +2814,25 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					}
 				} finally {
 					returnConnection(domain);
+				}
+			}
+			if (enable && 
+				entry.getAttribute("lockoutTime") != null &&
+				!entry.getAttribute("lockoutTime").getStringValue().equals("0"))
+			{
+				if (changes != null)
+					changes.add( new String[] {"Unlock account", entry.getAttribute("lockoutTime").getStringValue(),""});
+				else {
+					String domain = searchDomainForDN(entry.getDN());
+					LDAPConnection conn = getConnection(domain);
+					try {
+						conn.modify(entry.getDN(), new LDAPModification[] {
+								new LDAPModification(LDAPModification.REPLACE,
+										new LDAPAttribute("lockoutTime", "0"))
+						});
+					} finally {
+						returnConnection(domain);
+					}
 				}
 			}
 		}
