@@ -370,7 +370,7 @@ public class NASManager {
 					ACE ace = AceTypes.accessAllowedAce( inheritFlags,
 								accessMasks , 
 								com.hierynomus.msdtyp.SID.fromString(userSid));
-			    	sd.getDacl().getAces().add(ace);
+			    	sd.getDacl().getAces().add(0, ace);
 			    	sd.getControl().clear();
 			    	sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));
 			    	of.setSecurityInformation(sd);
