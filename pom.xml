@@ -186,4 +186,13 @@
 			<url>${soffid.deploy.site.url}</url>
 		</site>
 	</distributionManagement>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.hierynomus</groupId>
+				<artifactId>smbj</artifactId>
+				<version>0.9.1-soffid-2</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 </project>

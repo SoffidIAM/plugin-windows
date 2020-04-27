@@ -9,6 +9,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.logging.LogFactory;
+import org.jfree.util.Log;
+
 import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.msdtyp.SecurityDescriptor;
 import com.hierynomus.msdtyp.SecurityDescriptor.Control;
@@ -17,9 +20,12 @@ import com.hierynomus.msdtyp.ace.ACE;
 import com.hierynomus.msdtyp.ace.AceFlags;
 import com.hierynomus.msdtyp.ace.AceTypes;
 import com.hierynomus.mssmb2.SMB2CreateDisposition;
+import com.hierynomus.mssmb2.SMB2Dialect;
 import com.hierynomus.mssmb2.SMB2ShareAccess;
 import com.hierynomus.protocol.commons.EnumWithValue.EnumUtils;
+import com.hierynomus.security.bc.BCSecurityProvider;
 import com.hierynomus.smbj.SMBClient;
+import com.hierynomus.smbj.SmbConfig;
 import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
@@ -45,6 +51,7 @@ import es.caib.seycon.ng.exception.InternalErrorException;
 public class NASManager {
 	ApplicationService appService = null;
 	GroupService groupService = null;
+	org.apache.commons.logging.Log log = LogFactory.getLog(getClass());
 	
 	DispatcherService dispatcherService = null;
 	Set<SMB2ShareAccess> s = SMB2ShareAccess.ALL;
@@ -54,8 +61,10 @@ public class NASManager {
 	Password password;
 	String domain;
 	String host;
-	private static SMBClient smbClient = new SMBClient();
+	private static SMBClient smbClient = null;
+	private static SMBClient adClient = null;
 	private Connection adConnection;
+	private SmbConfig config;
 
 	
 	public NASManager (String domain, String host, String user, Password password) throws IOException
@@ -65,7 +74,6 @@ public class NASManager {
 		this.password = password;
 		this.host = host;
 		
-		final AuthenticationContext adAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
 		reconnect();
 	}
 	
@@ -77,6 +85,7 @@ public class NASManager {
 		String path = uncSplit[2];
 			
 		try {
+			connect();
 			createShare ( server, share, path, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -92,6 +101,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			rmShare ( server, share, path, false, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -107,6 +117,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			rmShare ( server, share, path, true, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -122,6 +133,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			return exists ( server, share, path, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -137,6 +149,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			return getAcl ( server, share, path, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -152,6 +165,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -167,6 +181,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -183,6 +198,7 @@ public class NASManager {
 		String path = uncSplit[2];
 
 		try {
+			connect();
 			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out));
 		} catch (IOException e) {
 			reconnect();
@@ -208,8 +224,12 @@ public class NASManager {
 	
 	public void createShare(String server, String shareName, String path,
 			PrintWriter out) throws IOException, InternalErrorException {
+		log.info("User:     "+user);
+//		log.info("Password: "+password.getPassword());
+		log.info("Domain:   "+domain);
+		log.info("Server:   "+server);
+		log.info("Share:    "+shareName);
 
-		final SMBClient smbClient = new SMBClient();
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -230,7 +250,6 @@ public class NASManager {
 	public void rmShare(String server, String shareName, String path,
 			boolean recursive, PrintWriter out) throws IOException, InternalErrorException {
 
-		final SMBClient smbClient = new SMBClient();
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -251,7 +270,6 @@ public class NASManager {
 	public boolean exists (String server, String shareName, String path,
 			PrintWriter out) throws IOException, InternalErrorException {
 
-		final SMBClient smbClient = new SMBClient();
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -362,7 +380,7 @@ public class NASManager {
 
 			    	String userSid = getSid(samAccountName);
 			    	if (userSid == null)
-			    		throw new InternalErrorException ("Unable to finde "+user+"'s SID");
+			    		throw new InternalErrorException ("Unable to finde "+samAccountName+"'s SID");
 //			    	System.out.println("Role SID for "+user+": "+userSid);
 
 			    	Set<AceFlags> inheritFlags = (Set<AceFlags>) stringToEnum(flags, AceFlags.class);
@@ -506,15 +524,64 @@ public class NASManager {
 	    return userSid.toString();
 	}
 
+	public void connect() throws IOException {
+		log.info("User:     "+user);
+//		log.info("Password: "+password.getPassword());
+		log.info("Domain:   "+domain);
+		log.info("Server:   "+host);
+
+		if (smbClient == null)
+		{
+			config = SmbConfig.builder()
+					.withDialects( 
+							SMB2Dialect.SMB_2_1, SMB2Dialect.SMB_2_0_2 
+//		            		,SMB2Dialect.SMB_3_0, SMB2Dialect.SMB_3_0_2, SMB2Dialect.SMB_3_1_1
+							)
+					.withSecurityProvider(new BCSecurityProvider())
+					.build();
+			smbClient = new SMBClient(config);
+		}
+		if (adClient == null)
+		{
+			config = SmbConfig.builder()
+		            .withDialects( 
+		            		SMB2Dialect.SMB_2_1, SMB2Dialect.SMB_2_0_2 
+//		            		,SMB2Dialect.SMB_3_0, SMB2Dialect.SMB_3_0_2, SMB2Dialect.SMB_3_1_1
+		            		)
+		            .withSecurityProvider(new BCSecurityProvider())
+		            .build();
+			adClient = new SMBClient(config);
+		}
+		if (adConnection == null)
+			adConnection = adClient.connect(host);
+		if (adSession == null)
+		{
+			final AuthenticationContext adAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+			adSession = adConnection.authenticate(adAuthenticationContext);
+		}
+	}
+	
 	public void reconnect() throws IOException {
 		try {
 			adSession.close();
+		} catch (Exception e2) {
+		}
+		adSession = null;
+		try {
 			adConnection.close();
 		} catch (Exception e2) {
 		}
-		adConnection = smbClient.connect(host);
-		final AuthenticationContext adAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
-		adSession = adConnection.authenticate(adAuthenticationContext);
+		adConnection = null;
+		try {
+			adClient.close();
+		} catch (Exception e2) {
+		}
+		adClient = null;
+		try {
+			smbClient.close();
+		} catch (Exception e2) {
+		}
+		smbClient = null;
 	}
 
 	
@@ -538,7 +605,7 @@ public class NASManager {
 			    SID sid = sam.getSIDForDomain(server, domains.getName());
 			    DomainHandle domain = sam.openDomain(server, sid);
 			    
-			    MembershipWithUse[] users = sam.lookupNamesInDomain(domain, samAccountName);
+			    MembershipWithUse[] users = sam.lookupNamesInDomain(domain, samAccountName.toLowerCase());
 			    for ( MembershipWithUse user: users)
 			    {
 			    	return sid.toString()+"-"+user.getRelativeID();		

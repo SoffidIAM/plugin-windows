@@ -49,7 +49,10 @@ import org.ietf.jgss.GSSManager;
 import org.ietf.jgss.GSSName;
 import org.ietf.jgss.Oid;
 
+import com.hierynomus.mssmb2.SMB2Dialect;
+import com.hierynomus.security.bc.BCSecurityProvider;
 import com.hierynomus.smbj.SMBClient;
+import com.hierynomus.smbj.SmbConfig;
 import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
@@ -301,6 +304,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		debugEnabled = "true".equals(getDispatcher().getParam7());
 		trustEverything = "true".equals(getDispatcher().getParam8());
 		extendedAttributes = new HashMap<String,String>();
+		if (loginDN.contains("\\")) {
+			samDomainName = loginDN.substring(0, loginDN.indexOf("\\"));
+			samAccountName = loginDN.substring(loginDN.indexOf("\\")+1);
+		}
 		byte[] data = getDispatcher().getBlobParam();
 		if (data != null)
 		{
@@ -345,6 +352,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw new InternalErrorException("Error querying domain short name", e2);
 		}
 
+		SmbConfig config = SmbConfig.builder()
+	            .withDialects( 
+	            		SMB2Dialect.SMB_2_0_2, SMB2Dialect.SMB_2_1
+	            		)
+	            .withSecurityProvider(new BCSecurityProvider())
+	            .build();
+		smbClient = new SMBClient(config );
+
 		try {
 			oldNameGetter = Account.class.getMethod("getOldName",  new Class[0]);
 		} catch (NoSuchMethodException e1) {
@@ -363,7 +378,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			{
 				try {
 					LDAPEntry entry = conn.read(baseDN);
-					log.info("Found domain "+entry.getAttribute("name").getStringValue());
 				} catch (Exception e) {
 					log.info("Unable to read object "+baseDN);
 				}
@@ -396,7 +410,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				samAccountName = loginDN.substring(loginDN.indexOf("\\")+1);
 			}
 			else
+			{
+				samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
 				samDomainName = searchNTDomainForDN(entry.getDN());
+			}
 		}
 		else {
 			String dn = loginDN.toLowerCase().endsWith(baseDN.toLowerCase()) ? loginDN: loginDN+","+baseDN;
@@ -410,8 +427,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			if (entry == null)
 				log.warn("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server");
 			samDomainName = searchNTDomainForDN(entry.getDN());
+			samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
 		}
-		samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
 	}
 
 
@@ -445,6 +462,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	private String reconfigurePool(String host, String dn) throws Exception {
+		log.info("RECONFIGURING POOL "+dn);
+
 		dn = dn.trim().toLowerCase();
 		LDAPPool pool = pools.get( getDispatcher().getId().toString()+"/"+dn);
 
@@ -482,6 +501,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 		}
 		
+		log.info("Searching for short domain names");
 		LDAPConnection conn = pool.getConnection();
 		try {
 			
@@ -498,9 +518,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			String shortName = dn.substring(dn.indexOf("dc=")+3);
 			if (shortName.contains(","))
 				shortName = shortName.substring(0, shortName.indexOf(","));
+			
+			if ( !multiDomain && samDomainName != null)
+				shortName = samDomainName;
+			
 			while (query.hasMore()) {
 				try {
+					log.info("Getting entry");
 					LDAPEntry entry = query.next();
+					log.info("Found "+entry.getDN());
+					debugEntry("Domain configuration ", entry.getDN(), entry.getAttributeSet());
 					shortName = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
 					String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
 					domainToShortName.put(ncn, shortName);
@@ -508,6 +535,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					log.info("Legacy name for "+ncn+" = "+shortName);
 				} catch (LDAPException e)
 				{
+					log.warn("Error getting short domain name", e);
 				}
 			}
 			shortName = shortName.trim().toLowerCase();
@@ -518,7 +546,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 			pools.put( getDispatcher().getId().toString()+"/"+dn, pool);
 			domainHost.put(dn, host);
-			log.info("Registered domain for "+dn+" (server "+host+")");
+			log.info("Registered domain "+shortName+" for "+dn+" (server "+host+")");
 			return dn;
 		} finally {
 			pool.returnConnection();
@@ -798,8 +826,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
-	final SMBClient smbClient = new SMBClient();
-	private void updateSamPassword(String domain, String accountName, Password password, boolean mustchange) throws IOException {
+	SMBClient smbClient = null;
+	
+	private void updateSamPassword(String domain, String accountName, Password password, boolean mustchange) throws IOException, InternalErrorException {
 		String hosts = domainHost.get(domain);
 		if (accountName.contains("\\"))
 			accountName = accountName.substring(accountName.indexOf("\\")+1);
@@ -841,6 +870,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				    			log.info("Setting password for user "+accountName+" at SAM domain "+n.getName());
 							sam.setPasswordEx(userHandle, password.getPassword(), mustchange);
 							return;
+				    	} catch (RPCException e) {
+				    		if (e.getErrorCode().is( 0xC000006C) ) {
+				    			throw new InternalErrorException("The password is not accepted due to policy restrictions", e);
+				    		} else {
+				    			throw e;
+				    		}
 			    		} finally {
 			    			sam.closeHandle(userHandle);
 			    		}
@@ -910,8 +945,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		for (String att: object.getAttributes())
 		{
 			try {
-				String value = vom.toSingleString(object.getAttribute(att));
-				queryString = queryString + "("+att +"="+ escapeLDAPSearchFilter(value) + ")";
+				if ( !att.equals("relativeBaseDn") && ! att.equals("dn"))
+				{
+					String value = vom.toSingleString(object.getAttribute(att));
+					queryString = queryString + "("+att +"="+ escapeLDAPSearchFilter(value) + ")";
+				}
 			} catch (Exception e) 
 			{
 			}
