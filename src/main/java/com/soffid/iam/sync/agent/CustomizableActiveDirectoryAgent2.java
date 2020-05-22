@@ -29,44 +29,49 @@ public class CustomizableActiveDirectoryAgent2 extends
 			ExtensibleObject adObject,
 			LDAPEntry currentEntry) throws InternalErrorException
 	{
-		log.info("Searching trigger "+triggerType.toString()+" in "+soffidObject.getObjectType());
-		SoffidObjectType sot = SoffidObjectType.fromString(soffidObject.getObjectType());
-		for ( ExtensibleObjectMapping eom : objectTranslator.getObjectsBySoffidType(sot))
-		{
-			if (adObject == null || adObject.getObjectType().equals(eom.getSystemObject()))
+		if (isDebug())
+			log.info("BEGIN Running trigger "+soffidObject.getObjectType()+"."+triggerType.toString());
+		try {
+			SoffidObjectType sot = SoffidObjectType.fromString(soffidObject.getObjectType());
+			for ( ExtensibleObjectMapping eom : objectTranslator.getObjectsBySoffidType(sot))
 			{
-				log.info("> Found mapping for "+soffidObject.getObjectType());
-				for ( ObjectMappingTrigger trigger: eom.getTriggers())
+				if (adObject == null || adObject.getObjectType().equals(eom.getSystemObject()))
 				{
-					if (trigger.getTrigger().equals (triggerType))
+					log.info("> Found mapping for "+soffidObject.getObjectType());
+					for ( ObjectMappingTrigger trigger: eom.getTriggers())
 					{
-						log.info("> Found trigger "+trigger.getTrigger());
-						ExtensibleObject eo = new ExtensibleObject();
-						eo.setAttribute("source", soffidObject);
-						eo.setAttribute("newObject", adObject);
-						if ( currentEntry != null)
+						if (trigger.getTrigger().equals (triggerType))
 						{
-							ExtensibleObject old = buildExtensibleObject(currentEntry);
-							eo.setAttribute("oldObject", old);
-						}
-						if ( ! objectTranslator.evalExpression(eo, trigger.getScript()) )
-						{
-							log.info("Trigger "+triggerType+" returned false");
-							if (debugEnabled)
+							log.info("> Found trigger "+trigger.getTrigger());
+							ExtensibleObject eo = new ExtensibleObject();
+							eo.setAttribute("source", soffidObject);
+							eo.setAttribute("newObject", adObject);
+							if ( currentEntry != null)
 							{
-								if (currentEntry != null)
-									debugEntry("old object", currentEntry.getDN(), currentEntry.getAttributeSet());
-								if (adObject != null)
-									debugObject("new object", adObject, "  ");
+								ExtensibleObject old = buildExtensibleObject(currentEntry);
+								eo.setAttribute("oldObject", old);
 							}
-							return false;
+							if ( ! objectTranslator.evalExpression(eo, trigger.getScript()) )
+							{
+								log.info("Trigger "+triggerType+" returned false");
+								if (debugEnabled)
+								{
+									if (currentEntry != null)
+										debugEntry("old object", currentEntry.getDN(), currentEntry.getAttributeSet());
+									if (adObject != null)
+										debugObject("new object", adObject, "  ");
+								}
+								return false;
+							}
 						}
 					}
 				}
 			}
+			return true;
+		} finally {
+			if (isDebug())
+				log.info("END");
 		}
-		return true;
-		
 	}
 
 	protected boolean runGrantTrigger (SoffidObjectTrigger triggerType,

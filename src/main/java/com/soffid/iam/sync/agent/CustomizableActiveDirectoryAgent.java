@@ -14,7 +14,6 @@ import java.security.KeyManagementException;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivilegedAction;
-import java.security.SecureRandom;
 import java.security.URIParameter;
 import java.security.cert.CertificateException;
 import java.util.ArrayList;
@@ -286,7 +285,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	@Override
 	public void init() throws InternalErrorException {
-		log.info("Starting Customizable Active Directory agent on {}",
+		log.info ("BEGIN Initalize Active Directory agent {}",
 				getDispatcher().getCodi(), null);
 		loginDN = getDispatcher().getParam2();
 
@@ -389,6 +388,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throw new InternalErrorException(
 					"Cannot connect to active directory", e);
 		} finally {
+			if (isDebug())
+				log.info("END");
 			Watchdog.instance().dontDisturb();
 			returnConnection(mainDomain);
 		}
@@ -1163,7 +1164,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			return;
 
 		if (debugEnabled)
-			log.info("Checking parent object "+dn);
+			log.info("BEGIN Checking parent object "+dn);
 		boolean found = false;
 		LDAPConnection connection = getConnection(domain);
 		try {
@@ -1181,7 +1182,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 		if (!found) {
 			if ( ! createOUs)
-				throw new InternalErrorException("Cannot find nor create object "
+				throw new InternalErrorException("Creation of parent object is disabled by configuration settings: "
 						+ dn);
 			createParents(parts, position + 1);
 			LDAPAttributeSet attributeSet = new LDAPAttributeSet();
@@ -1206,6 +1207,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				returnConnection(domain);
 			}
 		}
+		log.info("END");
 	}
 
 
@@ -1233,17 +1235,18 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 		try {
 			
-			if (debugEnabled)
-				debugObject("Updating object " + newAccountName, object, "  ");
 			LDAPEntry entry = null;
+			if (isDebug())
+				log.info("BEGIN Searching for AD object");
+
+			if (debugEnabled)
+				debugObject("Object attributes " + newAccountName, object, "  ");
 			entry = searchSamAccount(object, newAccountName);
 			if (entry == null && ! newAccountName.equals(accountName))
 			{
 				entry = searchSamAccount(object, accountName);
 				if (entry != null)
 				{
-					if (debugEnabled)
-						debugObject("Updating object " + accountName, object, "  ");
 					actualAccountName = accountName;
 					dn = getDN(object, accountName);
 					domain = getAccountDomain(accountName, dn);
@@ -1251,11 +1254,19 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			}
 			if (entry == null) {
+				if (isDebug()) {
+					log.info("Object not found -> Create it");
+					log.info("END");
+				}
 				if (changes != null)
 					changes.add( new String[] {"Create", dn} );
 				else
 					createNewObject(conn, actualAccountName, dn, object, source);
 			} else {
+				if (isDebug()) {
+					log.info("Object found -> Update it");
+					log.info("END");
+				}
 				updateExistingObject(conn, entry, actualAccountName, dn, object, source, changes);
 			}
 		} catch (Exception e) {
@@ -1275,6 +1286,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		log.info("Update existing object");
 		if (changes != null || preUpdate(source, object, entry)) {
 			LinkedList<LDAPModification> modList = new LinkedList<LDAPModification>();
+			if (isDebug())
+				log.info("BEGIN Updating Active Directory Object");
 			for (String attribute : object.getAttributes()) {
 				Object ov = object.getAttribute(attribute);
 				if (ov != null && "".equals(ov))
@@ -1404,6 +1417,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 			if (!entry.getDN().equalsIgnoreCase(dn)
 					&& !entry.getDN().contains(",CN=Builtin,")) {
+				if (isDebug())
+					log.info("BEGIN Distinguished Name change detected");
+
 				// Check if must rename
 				boolean rename = true;
 				ExtensibleObjectMapping mapping = getMapping(object
@@ -1437,7 +1453,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								parentName, true);
 					}
 				}
+				if (isDebug())
+					log.info("BEGIN Distinguished Name change detected");
 			}
+			if (isDebug())
+				log.info("END");
 		}
 	}
 
@@ -1448,6 +1468,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throws InternalErrorException, Exception, UnsupportedEncodingException, IOException, LDAPException {
 		LDAPEntry entry;
 		if (preInsert(source, object)) {
+			if (isDebug())
+				log.info("Create Active Directory object");
 			LDAPAttributeSet attributeSet = new LDAPAttributeSet();
 			for (String attribute : object.getAttributes()) 
 			{
@@ -1493,6 +1515,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				if ("user".equals(object.getObjectType())
 						|| "account".equals(object.getObjectType()))
 				{
+					if (isDebug())
+						log.info("Setting default userAccountControl value");
 					attributeSet.add(new LDAPAttribute(
 							USER_ACCOUNT_CONTROL, Integer
 									.toString(ADS_UF_ACCOUNTDISABLE
@@ -1509,6 +1533,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			if ((accountName != null)
 					&& ("user".equals(object.getObjectType()) || "account"
 							.equals(object.getObjectType()))) {
+				if (isDebug())
+					log.info("BEGIN Setting initial password");
 				Password p = getServer().getAccountPassword(
 						accountName, getCodi());
 				if (p != null) {
@@ -1520,6 +1546,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					updateObjectPassword(source, accountName, object,
 							p, true, false);
 				}
+				if (isDebug())
+					log.info("END");
 			}
 		}
 	}
@@ -1569,12 +1597,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
-	private ExtensibleObjectMapping getMapping(String objectType) {
+	private ExtensibleObjectMapping getMapping(String objectType) throws InternalErrorException {
+		ExtensibleObjectMapping m = null;
 		for (ExtensibleObjectMapping map : objectMappings) {
 			if (map.getSystemObject().equals(objectType))
-				return map;
+				if (m == null) m = map;
+				else throw new InternalErrorException("There is more than one mapping for system object "+objectType+". Please, rename one of them");
 		}
-		return null;
+		return m;
 	}
 
 	public void removeObjects(String account, ExtensibleObjects objects,
@@ -2731,12 +2761,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public void updateUser(String userName, Usuari userData)
 			throws RemoteException, InternalErrorException {
 		Account account = getServer().getAccountInfo(userName, getCodi());
-//		log.info("Updating account :"+account.toString());
-//		log.info("         user :"+userData.toString());
+		if (isDebug())
+			log.info("BEGIN Generating AD user object");
 		UserExtensibleObject source = new UserExtensibleObject(account,
 				userData, getServer());
 		ExtensibleObjects objects = objectTranslator.generateObjects(source);
 
+		if (isDebug())
+			log.info("END");
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
 			updateObjects(getAccountName(account), userName, objects, source, null);

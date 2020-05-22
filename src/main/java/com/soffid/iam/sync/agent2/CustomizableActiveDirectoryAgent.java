@@ -86,7 +86,8 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 				for (String domain: domainHost.keySet())
 				{
 					for (ExtensibleObjectMapping mapping : objectMappings) {
-						if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_USER) ||
+						if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_AUTHORITATIVE_CHANGE) ||
+								mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_USER) ||
 								mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_GROUP) ||
 								mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_CUSTOM)) {
 							searches.push( new LdapSearch(mapping, domain, nextChange) );
