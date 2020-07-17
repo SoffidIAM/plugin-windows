@@ -64,7 +64,7 @@ public class SSOActiveDirectoryAgent extends CustomizableActiveDirectoryAgent {
 
 	@Override
 	protected void updateObject(String accountName, String oldAccountName, ExtensibleObject object,
-			ExtensibleObject source, List<String[]> changes) throws Exception {
+			ExtensibleObject source, List<String[]> changes, boolean enabled) throws Exception {
 		// Nothing to do
 	}
 }

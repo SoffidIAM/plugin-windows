@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.commons.logging.LogFactory;
-import org.jfree.util.Log;
 
 import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.msdtyp.SecurityDescriptor;
@@ -27,6 +26,7 @@ import com.hierynomus.security.bc.BCSecurityProvider;
 import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.SmbConfig;
 import com.hierynomus.smbj.auth.AuthenticationContext;
+import com.hierynomus.smbj.common.SMBRuntimeException;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
 import com.hierynomus.smbj.share.Directory;
@@ -73,7 +73,10 @@ public class NASManager {
 		this.user = user;
 		this.password = password;
 		this.host = host;
-		
+		log.info("Initalizing NAS Manager");
+		log.info("Domain: "+domain);
+		log.info("User:   "+user);
+		log.info("Server: "+host);
 		reconnect();
 	}
 	
@@ -87,7 +90,7 @@ public class NASManager {
 		try {
 			connect();
 			createShare ( server, share, path, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -103,7 +106,7 @@ public class NASManager {
 		try {
 			connect();
 			rmShare ( server, share, path, false, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -119,7 +122,7 @@ public class NASManager {
 		try {
 			connect();
 			rmShare ( server, share, path, true, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -135,7 +138,7 @@ public class NASManager {
 		try {
 			connect();
 			return exists ( server, share, path, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -151,7 +154,7 @@ public class NASManager {
 		try {
 			connect();
 			return getAcl ( server, share, path, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -167,7 +170,7 @@ public class NASManager {
 		try {
 			connect();
 			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -183,7 +186,7 @@ public class NASManager {
 		try {
 			connect();
 			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -200,7 +203,7 @@ public class NASManager {
 		try {
 			connect();
 			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out));
-		} catch (IOException e) {
+		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			throw e;
 		}
@@ -299,8 +302,7 @@ public class NASManager {
 		    		if (of == null)
 		    			return null;
 		    		
-			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
-			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
+			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
 
 			    	for ( ACE ace: sd.getDacl().getAces())
 			    	{
@@ -331,8 +333,7 @@ public class NASManager {
 		    		if (of == null)
 		    			throw new IOException ("File "+path+" does not exist");
 		    		
-			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
-			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
+			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
 
 			    	
 			    	for ( Iterator<ACE> it = sd.getDacl().getAces().iterator(); it.hasNext();)
@@ -375,8 +376,7 @@ public class NASManager {
 		    		if (of == null)
 		    			throw new IOException ("File "+path+" does not exist");
 		    		
-			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
-			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
+			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
 
 			    	String userSid = getSid(samAccountName);
 			    	if (userSid == null)
@@ -598,19 +598,27 @@ public class NASManager {
 	    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(adSession);
 	    SecurityAccountManagerService sam = new SecurityAccountManagerService(transport2);
 	    ServerHandle server = sam.openServer();
-	    for (MembershipWithName domains: sam.getDomainsForServer(server))
-	    {
-	    	if (roleDomain == null || roleDomain.equalsIgnoreCase(domains.getName()))
-	    	{
-			    SID sid = sam.getSIDForDomain(server, domains.getName());
-			    DomainHandle domain = sam.openDomain(server, sid);
-			    
-			    MembershipWithUse[] users = sam.lookupNamesInDomain(domain, samAccountName.toLowerCase());
-			    for ( MembershipWithUse user: users)
-			    {
-			    	return sid.toString()+"-"+user.getRelativeID();		
-			    }
-	    	}
+	    try {
+		    for (MembershipWithName domains: sam.getDomainsForServer(server))
+		    {
+		    	if (roleDomain == null || roleDomain.equalsIgnoreCase(domains.getName()))
+		    	{
+				    SID sid = sam.getSIDForDomain(server, domains.getName());
+				    DomainHandle domain = sam.openDomain(server, sid);
+
+				    try {
+					    MembershipWithUse[] users = sam.lookupNamesInDomain(domain, samAccountName.toLowerCase());
+					    for ( MembershipWithUse user: users)
+					    {
+					    	return sid.toString()+"-"+user.getRelativeID();		
+					    }
+				    } finally {				    
+				    	sam.closeHandle(domain);
+				    }
+		    	}
+		    }
+	    } finally {
+	    	sam.closeHandle(server);
 	    }
 	    return null;
 	}
