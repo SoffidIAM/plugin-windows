@@ -525,15 +525,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			
 			while (query.hasMore()) {
 				try {
-					log.info("Getting entry");
 					LDAPEntry entry = query.next();
-					log.info("Found "+entry.getDN());
-					debugEntry("Domain configuration ", entry.getDN(), entry.getAttributeSet());
 					shortName = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
 					String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
 					domainToShortName.put(ncn, shortName);
 					shortNameToDomain.put(shortName, ncn);
-					log.info("Legacy name for "+ncn+" = "+shortName);
+					log.info("Legacy name for "+ncn+" = "+shortName.toUpperCase());
+				} catch (LDAPReferralException e)
+				{
+					// Ignore
 				} catch (LDAPException e)
 				{
 					log.warn("Error getting short domain name", e);
@@ -1106,7 +1106,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					object.setAttribute(key, 
 							accountName);
 			}
+			if (isDebug()) {
+				if (accountName.equals(newAccountName))
+					log.info("BEGIN Updating object {}", accountName);
+				else
+					log.info("BEGIN Updating object {} (new name is {})", accountName, newAccountName);
+			}
 			updateObject(accountName, newAccountName, object, source, changes, enabled);
+			if (isDebug())
+				log.info("END");
 		}
 	}
 
@@ -1997,6 +2005,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						}
 						return new LinkedList();
 					}
+					else if ("smb:removeAclInheritance".equalsIgnoreCase(verb))
+					{
+						Collection<Map<String,Object>> l2  = new LinkedList();
+						log.info("Removing inheritance "+command);
+						try {
+							nasManager.removeAclInheritance(command);
+						} catch (Exception e) {
+							throw new InternalErrorException("Cannot add acl "+command, e);
+						}
+						return new LinkedList();
+					}
 					else if ("smb:setowner".equalsIgnoreCase(verb))
 					{
 						Collection<Map<String,Object>> l2  = new LinkedList();
@@ -2804,11 +2823,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	 */
 	private void updateUserStatus(String userName, ExtensibleObject object, boolean enable, ExtensibleObject soffidObject, List<String[]> changes)
 			throws Exception {
+		if (isDebug())
+			log.info("BEGIN Setting user status (userAccountControl");
+
 		LDAPEntry entry = searchSamAccount(object, userName);
 
 		if (entry != null) {
-			
-			log.info("Changing user status");
 			LDAPModification modif = null;
 
 			// Update 'userAccountControl' attribute
@@ -2907,6 +2927,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			}
 		}
+		if (isDebug())
+			log.info("END");
 	}
 
 	/**
@@ -2922,9 +2944,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		// Aquí llegamos en usuarios nuevos y existentes ACTIVOS
 		// Gestionamos la membresía del usuario a roles y grupos
 		// en el atributo memberOf del usuario lo tenemos
+		if (isDebug())
+			log.info("BEGIN Setting group membership");
 		LDAPEntry userEntry = searchSamAccount(object, userName);
-		if (userEntry == null)
+		if (userEntry == null) {
+			if (isDebug())
+				log.info("END");
 			return;
+		}
+		
 		LDAPAttribute memberofattr = userEntry.getAttribute("memberOf");
 		String dispatcher = getCodi();
 		String soffidGroups[] = ((memberofattr == null) ? new String[] {}
@@ -2955,9 +2983,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 			for (Iterator<String> it = groups.iterator(); it.hasNext();) {
 				String groupCode = it.next();
-				log.info("User {} should belong to [{}]", userName, groupCode);
 				if (!h_soffidGroups.containsKey(groupCode.toLowerCase()))
 				{
+					if (isDebug())
+						log.info("BEGIN Adding {} to [{}]", userName, groupCode);
 					try {
 						if (changes != null)
 						{
@@ -2970,10 +2999,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					} catch (Exception e) {
 						lastException = e;
 						log.warn("Error adding group membership", e);
+					} finally {
+						if (isDebug())
+							log.info("END");
 					}
 				}
-				else
+				else {
+					if (isDebug())
+						log.info("Keeping membership to {}", groupCode, null);
 					h_soffidGroups.remove(groupCode.toLowerCase());
+				}
 			}
 		}
 
@@ -2981,6 +3016,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		for (Iterator it = h_soffidGroups.entrySet().iterator(); it.hasNext();) {
 			Map.Entry<String, String> entry = (Map.Entry<String, String>) it
 					.next();
+			if (isDebug())
+				log.info("BEGIN Removing {} from {}", userName, entry.getValue());
 			try {
 				if (changes != null)
 				{
@@ -2993,8 +3030,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			} catch (Exception e) {
 				lastException = e;
 				log.warn("Error removing group membership", e);
+			} finally {
+				if (isDebug())
+					log.info("END");
 			}
 		}
+		if (isDebug())
+			log.info("END");
 		if (lastException != null)
 			throw lastException;
 	}
@@ -3746,7 +3788,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		AuthoritativeChange change = null;
 		Usuari user = vom.parseUsuari(object);
 		if (user != null) {
-			 change = new AuthoritativeChange();
+			change = new AuthoritativeChange();
+			change.setSourceSystem(getCodi());
 
 			AuthoritativeChangeIdentifier id = new AuthoritativeChangeIdentifier();
 			change.setId(id);
