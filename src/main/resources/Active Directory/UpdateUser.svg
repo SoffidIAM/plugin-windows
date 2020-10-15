@@ -679,7 +679,7 @@
         <a
            id="a30316"
            xlink:href="#"
-           onclick="alert('hola')"
+           onclick=""
            style="fill:#22b9d8">
           <g
              id="g30314"
