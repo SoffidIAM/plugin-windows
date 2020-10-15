@@ -77,7 +77,7 @@ public class NASManager {
 		log.info("Domain: "+domain);
 		log.info("User:   "+user);
 		log.info("Server: "+host);
-		reconnect();
+		disconnect();
 	}
 	
 	public  void createFolder (String dir) throws Exception
@@ -92,7 +92,7 @@ public class NASManager {
 			createShare ( server, share, path, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			createShare ( server, share, path, new PrintWriter(System.out)); // Try again
 		}
 	}
 
@@ -108,7 +108,7 @@ public class NASManager {
 			rmShare ( server, share, path, false, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			rmShare ( server, share, path, false, new PrintWriter(System.out));
 		}
 	}
 
@@ -124,7 +124,7 @@ public class NASManager {
 			rmShare ( server, share, path, true, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			rmShare ( server, share, path, true, new PrintWriter(System.out));
 		}
 	}
 
@@ -140,7 +140,7 @@ public class NASManager {
 			return exists ( server, share, path, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			return exists ( server, share, path, new PrintWriter(System.out));
 		}
 	}
 
@@ -156,7 +156,7 @@ public class NASManager {
 			return getAcl ( server, share, path, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			return getAcl ( server, share, path, new PrintWriter(System.out));
 		}
 	}
 
@@ -172,7 +172,7 @@ public class NASManager {
 			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
 		}
 	}
 
@@ -188,10 +188,26 @@ public class NASManager {
 			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
 		}
 	}
 
+
+
+	public void removeAclInheritance(String dir) throws InternalErrorException, IOException {
+		String[] uncSplit = splitPath (dir);
+		String server = uncSplit[0];
+		String share = uncSplit[1];
+		String path = uncSplit[2];
+
+		try {
+			connect();
+			removeAclInheritance ( server, share, path, new PrintWriter(System.out));
+		} catch (IOException | SMBRuntimeException e) {
+			reconnect();
+			removeAclInheritance ( server, share, path, new PrintWriter(System.out));
+		}
+	}
 
 	public void setOwner (String dir, String samAccountName) throws Exception
 	{ 
@@ -205,7 +221,7 @@ public class NASManager {
 			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out));
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			throw e;
+			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out));
 		}
 	}
 
@@ -239,7 +255,6 @@ public class NASManager {
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
-//		    	System.out.println("Testing path "+path);
 		    	if ( ! share.folderExists(path))
 		    	{
 		    		of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
@@ -259,7 +274,6 @@ public class NASManager {
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
-//		    	System.out.println("Removing path "+path);
 		    	if (share.folderExists(path) && recursive)
 		    		share.rmdir(path, true);
 		    	else if (share.folderExists(path))
@@ -279,7 +293,6 @@ public class NASManager {
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
-//		    	System.out.println("Testing path "+path);
 		    	return share.fileExists(path) || share.folderExists(path);
 			}
 		}
@@ -361,6 +374,40 @@ public class NASManager {
 		}
 	}
 
+	public void removeAclInheritance(String server, String shareName, String path,
+			PrintWriter out) throws IOException, InternalErrorException {
+		try (final Connection smbConnection = smbClient.connect(server)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+		    	Directory of = null;
+		    	if ( share.folderExists(path))
+		    	{
+		    		of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+			    				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+		    		if (of == null)
+		    			throw new IOException ("File "+path+" does not exist");
+		    		
+			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
+
+			    	for ( Iterator<ACE> it = sd.getDacl().getAces().iterator(); it.hasNext();)
+			    	{
+			    		ACE ace = it.next();
+			    		if (ace.getAceHeader().getAceFlags().contains(AceFlags.INHERITED_ACE) )
+			    			it.remove();
+			    	}
+
+			    	sd.getControl().clear();
+			    	sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));
+			    	of.setSecurityInformation(sd);
+
+			    	of.close();
+		    	}
+			}
+		}
+		return;
+	}
+
 	public void addAcl(String server, String shareName, String path,
 			String samAccountName, String permission, String flags,
 			PrintWriter out) throws IOException, InternalErrorException {
@@ -381,7 +428,6 @@ public class NASManager {
 			    	String userSid = getSid(samAccountName);
 			    	if (userSid == null)
 			    		throw new InternalErrorException ("Unable to finde "+samAccountName+"'s SID");
-//			    	System.out.println("Role SID for "+user+": "+userSid);
 
 			    	Set<AceFlags> inheritFlags = (Set<AceFlags>) stringToEnum(flags, AceFlags.class);
 			    	Set<AccessMask> accessMasks = (Set<AccessMask>) stringToEnum(permission, AccessMask.class);
@@ -389,6 +435,9 @@ public class NASManager {
 								accessMasks , 
 								com.hierynomus.msdtyp.SID.fromString(userSid));
 			    	sd.getDacl().getAces().add(0, ace);
+			    	
+			    	normalizeAces(sd.getDacl().getAces());
+			    	
 			    	sd.getControl().clear();
 			    	sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));
 			    	of.setSecurityInformation(sd);
@@ -397,6 +446,22 @@ public class NASManager {
 			}
 		}
 		return;
+	}
+
+	private void normalizeAces(List<ACE> aces) {
+		Set<String> used = new HashSet<>();
+		for (Iterator<ACE> iterator = aces.iterator(); iterator.hasNext();) {
+			ACE ace = iterator.next();
+    		com.hierynomus.msdtyp.SID sid = ace.getSid();
+    		String am = enumToString(ace.getAccessMask(), AccessMask.class);
+    		String inh = enumToString(ace.getAceHeader().getAceFlags());
+    		String hash = sid.toString() + " / "+am + " / " +inh; 
+    		if (used.contains(hash))
+    			iterator.remove();
+    		else
+    			used.add(hash);
+		}
+		
 	}
 
 	public void setOwner(String server, String shareName, String path,
@@ -418,9 +483,7 @@ public class NASManager {
 			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
 
 			    	com.hierynomus.msdtyp.SID ownerSid = sd.getOwnerSid();
-			    	System.out.println("Owner sid = "+ownerSid);
 			    	String owner = getNameOf(out, ownerSid);
-			    	System.out.println("Owner = "+owner);
 			    	
 			    	String userSid = getSid(samAccountName);
 			    	if (userSid == null)
@@ -562,6 +625,11 @@ public class NASManager {
 	}
 	
 	public void reconnect() throws IOException {
+		disconnect();
+		connect();
+	}
+
+	public void disconnect() {
 		try {
 			adSession.close();
 		} catch (Exception e2) {
