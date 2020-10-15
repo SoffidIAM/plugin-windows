@@ -30,19 +30,18 @@ public class CustomizableActiveDirectoryAgent2 extends
 			LDAPEntry currentEntry) throws InternalErrorException
 	{
 		if (isDebug())
-			log.info("BEGIN Running trigger "+soffidObject.getObjectType()+"."+triggerType.toString());
+			log.info("BEGIN Running triggers "+soffidObject.getObjectType()+"."+triggerType.toString());
 		try {
 			SoffidObjectType sot = SoffidObjectType.fromString(soffidObject.getObjectType());
 			for ( ExtensibleObjectMapping eom : objectTranslator.getObjectsBySoffidType(sot))
 			{
 				if (adObject == null || adObject.getObjectType().equals(eom.getSystemObject()))
 				{
-					log.info("> Found mapping for "+soffidObject.getObjectType());
 					for ( ObjectMappingTrigger trigger: eom.getTriggers())
 					{
 						if (trigger.getTrigger().equals (triggerType))
 						{
-							log.info("> Found trigger "+trigger.getTrigger());
+							log.info("Found trigger "+trigger.getTrigger());
 							ExtensibleObject eo = new ExtensibleObject();
 							eo.setAttribute("source", soffidObject);
 							eo.setAttribute("newObject", adObject);
