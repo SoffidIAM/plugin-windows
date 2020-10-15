@@ -43,7 +43,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 				.generateObjects(sourceObject);
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 		try {
-			updateObjects(obj.getName(), obj.getName(), objects, sourceObject, null /*always apply */);
+			updateObjects(obj.getName(), obj.getName(), objects, sourceObject, null /*always apply */, true);
 		} catch (InternalErrorException e) {
 			throw e;
 		} catch (Exception e) {

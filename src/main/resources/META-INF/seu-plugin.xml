@@ -69,7 +69,7 @@
 			<mapping soffidAttribute='lastName' systemAttribute='sn'
 				direction="inout" />
 			<mapping
-				soffidAttribute='shortName==null ? attributes{"MAIL"} : shortName+"@"+mailDomain'
+				soffidAttribute='shortName==null || shortName==void ? attributes{"MAIL"} : shortName+"@"+mailDomain'
 				systemAttribute='mail' direction="out" />
 			<mapping soffidAttribute='primaryGroup' systemAttribute='departmentNumber'
 				direction="out" />

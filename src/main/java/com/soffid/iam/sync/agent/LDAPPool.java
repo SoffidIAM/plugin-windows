@@ -235,7 +235,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			conn = new LDAPConnection(ldapSecureSocketFactory);
 		} else  {
 			conn = new LDAPConnection();
-			if (debug)
+			if (debug && false)
 				log.warn("Created plain connection "+baseDN, new Exception());
 		}
 		
