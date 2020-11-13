@@ -244,7 +244,6 @@ public class NASManager {
 	public void createShare(String server, String shareName, String path,
 			PrintWriter out) throws IOException, InternalErrorException {
 		log.info("User:     "+user);
-//		log.info("Password: "+password.getPassword());
 		log.info("Domain:   "+domain);
 		log.info("Server:   "+server);
 		log.info("Share:    "+shareName);
@@ -589,7 +588,6 @@ public class NASManager {
 
 	public void connect() throws IOException {
 		log.info("User:     "+user);
-//		log.info("Password: "+password.getPassword());
 		log.info("Domain:   "+domain);
 		log.info("Server:   "+host);
 

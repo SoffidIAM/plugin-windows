@@ -335,7 +335,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		// followReferrals = false;
 		
 		log.debug("Started ActiveDirectoryAgent user=" + loginDN,
-//				+ " pass=" + password + "(" + password.getPassword() + ")",
 				null, null);
 		try {
 			javaDisk = new bubu.util.javadisk();
@@ -1825,10 +1824,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				return true;
 			} catch (UnsupportedEncodingException e) {
 			} catch (Exception e) {
-				if (debugEnabled)
-					log.info("Error connecting to " + host + " as user " + user+" / "+password.getPassword(), e);
-				else
-					log.info("Error connecting to " + host + " as user " + user, e);
+				log.info("Error connecting to " + host + " as user " + user, e);
 			} finally {
 				Watchdog.instance().dontDisturb();
 			}
@@ -2886,14 +2882,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					
 						if (conn.isTLS())
 						{
-							log.info("Setting password via LDAP " + password.getPassword() );
+							log.info("Setting password via LDAP ");
 							byte b[] = encodePassword(password);
 							LDAPModification modif2 = new LDAPModification(LDAPModification.ADD, new LDAPAttribute("unicodePwd", b));
 							LDAPModification[] mods = new LDAPModification[] { modif2, modif };
 							debugModifications("Updating user data ", entry.getDN(), mods);
 							conn.modify(entry.getDN(), mods);
 						} else {
-							log.info("Setting password via SAM "+password.getPassword() );
+							log.info("Setting password via SAM ");
 							updateSamPassword(domain, userName, password, true);
 							conn.modify(entry.getDN(), modif);
 						}
