@@ -142,8 +142,7 @@ public class ActiveDirectoryOnlyPasswordsAgent extends WindowsNTBDCAgent impleme
 		setquota = ("quota".equalsIgnoreCase(getDispatcher().getParam5()));
 		allowedDrives = getDispatcher().getParam6();
 
-		log.debug("Iniciado ActiveDirectoryAgent improved user=" + loginDN
-				+ " pass=" + password + "(" + password.getPassword() + ")", null, null);
+		log.debug("Iniciado ActiveDirectoryAgent improved user=" + loginDN, null, null);
 		try
 		{
 			javaDisk = new bubu.util.javadisk();

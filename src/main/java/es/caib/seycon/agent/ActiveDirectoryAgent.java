@@ -179,8 +179,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 		setquota = ("quota".equalsIgnoreCase(getDispatcher().getParam5()));
 		allowedDrives = getDispatcher().getParam6();
 
-		log.debug("Iniciado ActiveDirectoryAgent improved user=" + loginDN
-				+ " pass=" + password + "(" + password.getPassword() + ")", null, null);
+		log.debug("Iniciado ActiveDirectoryAgent improved user=" + loginDN, null, null);
 		try
 		{
 			javaDisk = new bubu.util.javadisk();
@@ -624,7 +623,7 @@ public class ActiveDirectoryAgent extends WindowsNTBDCAgent implements UserMgr,
 			catch (LDAPException e)
 			{
 				throw new InternalErrorException("Failed to connect to LDAP: ("
-						+ loginDN + "/" + password + ")" + e.toString(), e);
+						+ loginDN + ")" + e.toString(), e);
 			}
 		}
 		return (conn);
