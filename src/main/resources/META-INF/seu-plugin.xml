@@ -62,8 +62,8 @@
 
 			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
 				direction="out" />
-			<mapping soffidAttribute='accountName' systemAttribute='cn'
-				direction="inout" />
+			<mapping soffidAttribute='fullName' systemAttribute='cn'
+				direction="out" />
 			<mapping soffidAttribute='firstName' systemAttribute='givenName'
 				direction="inout" />
 			<mapping soffidAttribute='lastName' systemAttribute='sn'
@@ -88,7 +88,7 @@
 				direction="out" />
 			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
 				direction="out" />
-			<mapping soffidAttribute='accountName' systemAttribute='cn'
+			<mapping soffidAttribute='accountDescription' systemAttribute='cn'
 				direction="inout" />
 			<mapping soffidAttribute='accountDescription' systemAttribute='sn'
 				direction="inout" />
