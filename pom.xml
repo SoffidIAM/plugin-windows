@@ -10,7 +10,7 @@
 	<artifactId>windows-plugin</artifactId>
 	<packaging>jar</packaging>
 	<name>Windows plugin</name>
-	<version>5.1.5-SNAPSHOT</version>
+	<version>5.1.5</version>
 	<dependencies>
 		<dependency>
 			<groupId>com.novell.ldap</groupId>
