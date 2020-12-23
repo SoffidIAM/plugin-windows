@@ -151,6 +151,7 @@ public class RealTimeChangeLoader implements Runnable {
 		try {
 			if (dispatcher.isAuthoritative())
 			{
+				LDAPAttribute att = entry.getAttribute("objectClass");
 				ExtensibleObject ldapObject = agent.parseEntry(entry, mapping);
 				ExtensibleObjects parsedObjects = agent.getObjectTranslator()
 						.parseInputObjects(ldapObject);
@@ -159,7 +160,10 @@ public class RealTimeChangeLoader implements Runnable {
 					{
 						agent.debugObject("Got Soffid object", object, "  ");
 					}
-					AuthoritativeChange change = agent.parseUserChange(object);
+					AuthoritativeChange change = null;
+					
+					if (isUser(entry))
+						change = agent.parseUserChange(object);
 					if (change == null)
 						change = agent.parseGroupChange(object);
 					if (change == null)
@@ -206,7 +210,7 @@ public class RealTimeChangeLoader implements Runnable {
 						new es.caib.seycon.ng.remote.RemoteServiceLocator().getServerService().reconcileAccount(dispatcher.getCodi(), accountName);
 					}
 				}
-		}
+			}
 		} catch (Exception e) {
 			log.warn("Error processing authortative change", e);
 		}
