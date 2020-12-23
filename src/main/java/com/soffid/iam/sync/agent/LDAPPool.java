@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
@@ -19,6 +20,7 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import org.apache.commons.logging.LogFactory;
 import org.apache.xml.security.stax.ext.InboundSecurityContext;
 import org.slf4j.Logger;
 
@@ -29,11 +31,13 @@ import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
 import com.novell.ldap.LDAPSocketFactory;
+import com.soffid.iam.sync.engine.pool.PoolElement;
 
 import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.config.Config;
 import es.caib.seycon.ng.exception.InternalErrorException;
 import es.caib.seycon.ng.sync.engine.pool.AbstractPool;
+import es.caib.seycon.util.Base64;
 
 public class LDAPPool extends AbstractPool<LDAPConnection> {
 
@@ -340,7 +344,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 }
 
 class AlwaysTrustManager implements X509TrustManager {
-
     private KeyStore ks;
 	private File cacertsConf;
 
@@ -375,11 +378,14 @@ class AlwaysTrustManager implements X509TrustManager {
     public void checkServerTrusted(X509Certificate[] arg0, String arg1)
             throws CertificateException {
     	try {
-			if (!ks.containsAlias(arg0[0].getSubjectX500Principal().getName()))
-			{
-				ks.setCertificateEntry(arg0[0].getSubjectX500Principal().getName(), arg0[0]);
-			    ks.store( new FileOutputStream ( cacertsConf ), "changeit".toCharArray());
-			}
+//			LogFactory.getLog(getClass()).info("Unknown cert "+arg0[0]);
+			MessageDigest d = MessageDigest.getInstance("SHA-1");
+			String entryName = Base64.encodeBytes( d.digest(arg0[0].getEncoded()), Base64.DONT_BREAK_LINES );
+			LogFactory.getLog(getClass()).info("Registering entry "+entryName);
+			if (ks.containsAlias(entryName))
+				ks.deleteEntry(entryName);
+			ks.setCertificateEntry(entryName, arg0[0]);
+		    ks.store( new FileOutputStream ( cacertsConf ), "changeit".toCharArray());
 		} catch (KeyStoreException e) {
 			throw new CertificateException ("Error validating certificate", e);
 		} catch (NoSuchAlgorithmException e) {
