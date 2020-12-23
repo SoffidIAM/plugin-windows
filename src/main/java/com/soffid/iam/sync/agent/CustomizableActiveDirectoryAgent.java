@@ -12,6 +12,7 @@ import java.net.UnknownHostException;
 import java.rmi.RemoteException;
 import java.security.KeyManagementException;
 import java.security.KeyStoreException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivilegedAction;
 import java.security.URIParameter;
@@ -372,6 +373,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			if (multiDomain)
 			{
 				searchDomains (conn, excludeDomains);
+				searchLegacyDomains(conn, excludeDomains);
 			}
 			else
 			{
@@ -443,6 +445,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	protected LDAPConnection getConnection(String domain) throws Exception {
 		LDAPPool pool = getPool(domain);
+		if (pool == null && domain != null) {
+			log.info("Finding pool for "+domain);
+			String domain2 = searchDomainForDN(domain);
+			log.info("Using pool "+domain2);
+			pool = getPool(domain2);
+		}
 		if (pool == null) {
 			throw new InternalErrorException("Unknown LDAP pool "+domain);
 		}
@@ -463,6 +471,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	private String reconfigurePool(String host, String dn) throws Exception {
+		return reconfigurePool(host, dn, null);
+	}
+	
+	private String reconfigurePool(String host, String dn, String shortName) throws Exception {
 		log.info("RECONFIGURING POOL "+dn);
 
 		dn = dn.trim().toLowerCase();
@@ -502,44 +514,49 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 		}
 		
-		log.info("Searching for short domain names");
 		LDAPConnection conn = pool.getConnection();
 		try {
-			
-			LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
-			LDAPSearchResults query;
-			try {
-				query = conn.search("cn=configuration,"+dn,
-						LDAPConnection.SCOPE_SUB, "(nETBIOSName=*)", null, false,
-						constraints);
-			} catch (Exception e) {
-				log.info("Error connecting to "+conn.getHost()+":"+conn.getPort());
-				return mainDomain;
-			}
-			String shortName = dn.substring(dn.indexOf("dc=")+3);
-			if (shortName.contains(","))
-				shortName = shortName.substring(0, shortName.indexOf(","));
-			
-			if ( !multiDomain && samDomainName != null)
-				shortName = samDomainName;
-			
-			while (query.hasMore()) {
+			if (shortName == null) {
+				log.info("Searching for short domain name for "+dn);
+				
+				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+				LDAPSearchResults query;
 				try {
-					LDAPEntry entry = query.next();
-					shortName = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
-					String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
-					domainToShortName.put(ncn, shortName);
-					shortNameToDomain.put(shortName, ncn);
-					log.info("Legacy name for "+ncn+" = "+shortName.toUpperCase());
-				} catch (LDAPReferralException e)
-				{
-					// Ignore
-				} catch (LDAPException e)
-				{
-					log.warn("Error getting short domain name", e);
+					query = conn.search("cn=configuration,"+dn,
+							LDAPConnection.SCOPE_SUB, "(nETBIOSName=*)", null, false,
+							constraints);
+				} catch (Exception e) {
+					log.info("Error connecting to "+conn.getHost()+":"+conn.getPort());
+					return mainDomain;
 				}
+				shortName = dn.substring(dn.indexOf("dc=")+3);
+				if (shortName.contains(","))
+					shortName = shortName.substring(0, shortName.indexOf(","));
+				
+				if ( !multiDomain && samDomainName != null)
+					shortName = samDomainName;
+				
+				while (query.hasMore()) {
+					try {
+						LDAPEntry entry = query.next();
+						String shortName2 = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
+						String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
+						if (ncn.equalsIgnoreCase(dn)) {
+							shortName = shortName2;
+							domainToShortName.put(ncn, shortName2);
+							shortNameToDomain.put(shortName2, ncn);
+							log.info("Legacy name for "+ncn+" = "+shortName.toUpperCase());
+						}
+					} catch (LDAPReferralException e)
+					{
+						// Ignore
+					} catch (LDAPException e)
+					{
+						log.info("Error getting short domain name "+e.toString());
+					}
+				}
+				shortName = shortName.trim().toLowerCase();
 			}
-			shortName = shortName.trim().toLowerCase();
 			if (! domainToShortName.containsKey(dn.toLowerCase()))
 			{
 				domainToShortName.put(dn.toLowerCase(), shortName);
@@ -629,6 +646,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 
 	private void searchDomains(LDAPConnection conn, String excludeDomains) throws Exception {
+		
+		log.info("Searching child domains (excluding "+excludeDomains+") base domain "+baseDN);
+		
 		String base = baseDN;
 		String queryString = "(objectClass=domain)";
 
@@ -637,6 +657,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				excludeDomains.trim().toLowerCase().split(" +");
 		Arrays.sort(excluded);
 		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+		constraints.setReferralFollowing(true);
+		
 		LDAPSearchResults query = conn.search(base,
 					LDAPConnection.SCOPE_SUB, queryString, null, false,
 					constraints);
@@ -644,9 +666,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			try {
 				LDAPEntry entry = query.next();
 				// Ignore embedded domains
-				
+				log.info("Got entry "+entry.getDN());
 			} catch (LDAPReferralException e)
 			{
+				log.info("Referral error "+e.toString());
 				for (String r: e.getReferrals())
 				{
 					try {
@@ -665,6 +688,74 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						log.warn("Error decoding "+e.getFailedReferral(), e1);
 					}
 				}
+			}
+		}			
+	}
+
+	private void searchLegacyDomains(LDAPConnection conn, String excludeDomains) throws Exception {
+		
+		log.info("Searching child legacy domains (excluding "+excludeDomains+") base domain "+baseDN);
+		
+		String base = baseDN;
+
+		String excluded[] = excludeDomains == null ? 
+				new String[0]:
+				excludeDomains.trim().toLowerCase().split(" +");
+		Arrays.sort(excluded);
+		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+		constraints.setReferralFollowing(true);
+		
+		LDAPSearchResults query = conn.search("cn=configuration,"+base,
+					LDAPConnection.SCOPE_SUB, "(nETBIOSName=*)", null, false,
+					constraints);
+		while (query.hasMore()) {
+			try {
+				LDAPEntry entry = query.next();
+				String shortName2 = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
+				String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
+				if (! domainToShortName.containsKey(ncn)) {
+					log.info("Found legacy domain "+ncn);
+					String server;
+					if (entry.getAttribute("dnsRoot") != null) {
+						server = entry.getAttribute("dnsRoot").getStringValue();
+					} else {
+						server = "";
+						for (String part: ncn.split("dc=")) {
+							if (!server.isEmpty()) server += ".";
+							if (part.endsWith(",")) server += part.substring(0, part.length()-1);
+							else server += part;
+						}
+					}
+					if ( Arrays.binarySearch(excluded, ncn.toLowerCase()) < 0 &&
+							Arrays.binarySearch(excluded, server) < 0)
+					{
+						reconfigurePool(server, ncn, shortName2);
+					}
+				}
+			} catch (LDAPReferralException e)
+			{
+				log.info("Referral error "+e.toString());
+				for (String r: e.getReferrals())
+				{
+					try {
+						LDAPUrl url = new LDAPUrl(r);
+						String server = url.getHost().toLowerCase();
+						String lastPart = server.contains(".") ? server.substring(0, server.indexOf(".")) : server;
+						String dn = url.getDN().toLowerCase();
+						if ( Arrays.binarySearch(excluded, dn.toLowerCase()) < 0 &&
+								Arrays.binarySearch(excluded, server) < 0 &&
+								!lastPart.endsWith("dnszones") && 
+								!dn.contains("cn=configuration,"))
+						{
+							reconfigurePool(server, dn);
+						}
+					} catch (MalformedURLException e1) {
+						log.warn("Error decoding "+e.getFailedReferral(), e1);
+					}
+				}
+			} catch (LDAPException e)
+			{
+				log.info("Error getting short domain name "+e.toString());
 			}
 		}			
 	}
@@ -1141,7 +1232,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		return s.toArray(new String[s.size()]);
 	}
 	
-	private String getDN(ExtensibleObject object, String accountName) {
+	private String getDN(ExtensibleObject object, String accountName) throws InternalErrorException {
 		String dn = (String) object.getAttribute("dn");
 		if (dn == null || dn.length() == 0) {
 			String name = (String) object.getAttribute("cn");
@@ -1241,6 +1332,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		String dn = getDN(object, actualAccountName);
 		String domain = getAccountDomain(newAccountName, dn);
 		LDAPConnection conn = getConnection(domain);
+		String domain0 = domain;
+		String domain1 = null;
 		Map<String, String> props = getProperties ( object.getObjectType());
 		String key = props.get("key");
 		if (key == null)
@@ -1262,7 +1355,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				{
 					actualAccountName = accountName;
 					dn = getDN(object, accountName);
-					domain = getAccountDomain(accountName, dn);
+					domain1 = domain = getAccountDomain(accountName, dn);
 					conn = getConnection(domain);
 				}
 			}
@@ -1288,7 +1381,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			handleException(e, conn);
 			throw new InternalErrorException(msg, e);
 		} finally {
-			returnConnection(domain);
+			returnConnection(domain0);
+			if (domain1 != null)
+				returnConnection(domain1);
 		}
 	}
 
@@ -1563,21 +1658,27 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 
-	private String getAccountDomain(String accountName, String dn) {
+	private String getAccountDomain(String accountName, String dn) throws InternalErrorException {
 		if (accountName == null)
 			return searchDomainForDN(dn);
-		
+		String d;
 		String ntDomain;
 		String[] domainSplit = accountName.split("\\\\");
 		if (multiDomain && domainSplit.length == 2)
 		{
 			ntDomain = domainSplit[0].toLowerCase();
-			return shortNameToDomain.get(ntDomain);
+			d = shortNameToDomain.get(ntDomain);
+			if (d == null)
+				throw new InternalErrorException("Unable to find domain for "+ntDomain);
 		}
 		else if (dn == null)
-			return mainDomain;
-		else
-			return searchDomainForDN(dn);
+			d = mainDomain;
+		else {
+			d = searchDomainForDN(dn);
+			if (d == null)
+				throw new InternalErrorException("Unable to find domain for "+dn);
+		}
+		return d;
 	}
 
 
@@ -1726,7 +1827,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		if (multiDomain && domainSplit.length == 2)
 		{
 			String ntDomain = domainSplit[0].toLowerCase();
+			log.info("findSamObject: nt domain "+ntDomain);
 			domain = shortNameToDomain.get(ntDomain);
+			log.info("findSamObject: domain "+ntDomain);
 			if (domain == null)
 				throw new InternalErrorException("Searching for object "+value+" on unknown domain "+domainSplit[0]);
 			samAccountName = domainSplit[1];
@@ -1865,7 +1968,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				if (log != null)
 					factory.setLog(log);
 				ldapSecureSocketFactory = factory;
-				
+				log.info("Using DEBUG wrapper");
 			}
 			else
 				ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
@@ -1928,6 +2031,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					else if ("select".equalsIgnoreCase(verb) || "query".equalsIgnoreCase(verb))
 					{
 						return queryLdapObjects (baseDN, command, params);
+					}
+					else if ("rename".equalsIgnoreCase(verb))
+					{
+						return renameLdapObjects (command, params);
 					}
 					else if ("get".equalsIgnoreCase(verb) || "read".equalsIgnoreCase(verb))
 					{
@@ -2077,6 +2184,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	private Collection<Map<String, Object>> queryLdapObjects(String base, String queryString, Map<String, Object> params) throws InternalErrorException {
+		if (params.get("base") != null)
+			base = (String) params.get("base");
 		String domain = searchDomainForDN(base);
 		try {
 			LDAPConnection conn = getConnection(domain);
@@ -2108,6 +2217,49 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 	
+	private Collection<Map<String, Object>> renameLdapObjects(String olddn, Map<String, Object> params) throws InternalErrorException {
+		String newdn = (String) params.get("dn");
+		
+		String domain = searchDomainForDN(olddn);
+		try {
+			LDAPConnection conn = getConnection(domain);
+			LDAPPool pool = getPool(domain);
+			try
+			{
+				LinkedList<Map<String, Object>> result = new LinkedList<Map<String,Object>>();
+				
+				try {
+					LDAPEntry entry = conn.read(olddn);
+					if (entry != null) {
+						String[] split = splitDN(newdn);
+						String parentName =  mergeDN(split, 1);
+						conn.rename(entry.getDN(), split[0], parentName, true);
+					}
+				} 
+				catch (LDAPReferralException e)
+				{
+					// Ignore
+				}
+				catch (LDAPException e2)
+				{
+					if (e2.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
+						// Ignore
+					} else {
+						log.debug("LDAP Exception: "+e2.toString());
+						log.debug("ERROR MESSAGE: "+e2.getLDAPErrorMessage());
+						log.debug("LOCALIZED MESSAGE: "+e2.getLocalizedMessage());
+						throw e2;
+					}
+				}
+				return result;
+			} finally {
+				returnConnection(domain);
+			}
+		} catch (Exception e1) {
+			throw new InternalErrorException ("Error performing LDAP query", e1);
+		}
+	}
+
 	private Collection<Map<String, Object>> getLdapObjects(String base, String queryString, Map<String, Object> params) throws InternalErrorException {
 		String domain = searchDomainForDN(queryString);
 		try {
@@ -3418,6 +3570,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public KerberosPrincipalInfo createServerPrincipal(String server)
 			throws InternalErrorException {
 		try {
+			log.info("Creating principal for server "+server);
 			String uid;
 			String principal;
 			if (server.contains("/")) {
@@ -3425,13 +3578,20 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				uid = server.replace('/', '_');
 			} else {
 				uid = "SEYCON_" + server;
-				if (uid.indexOf('.') > 0)
-					uid = uid.substring(0, uid.indexOf('.'));
-				if (uid.length() > 20)
+				if (uid.indexOf('.', 11) > 0)
+					uid = uid.substring(0, uid.indexOf('.', 11));
+				if (uid.length() > 20) {
+					MessageDigest d = MessageDigest.getInstance("MD5");
+					byte data[] = d.digest(server.getBytes("UTF-8"));
+					uid = "SOFFID_" + Base64.encodeBytes(data, Base64.DONT_BREAK_LINES);
 					uid = uid.substring(0, 20);
+				}
 				principal = "SEYCON/" + server;
 			}
+			log.info("Account name:    "+uid);
+			log.info("Server principal: "+principal);
 
+			
 			String realm = getRealmName();
 			KerberosPrincipalInfo result = new KerberosPrincipalInfo();
 			result.setUserName(uid);
@@ -3453,6 +3613,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				String dn = getDN(ldapObject, null);
 				String domain = searchDomainForDN(dn); 
 				LDAPConnection lc = getConnection(domain);
+				if (entry == null) 
+					entry = findByServiceName(lc, domain, principal);
 				try {
 					if (entry == null) {
 						ldapObject
@@ -3557,6 +3719,28 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		} catch (Exception e) {
 			throw new InternalErrorException(e.getMessage(), e);
 		}
+	}
+
+	private LDAPEntry findByServiceName(LDAPConnection conn, String domain, String serviceName) throws Exception {
+		LDAPEntry entry;
+		String queryString;
+
+		queryString = "(&(objectClass=user)(servicePrincipalName=" + escapeLDAPSearchFilter(serviceName) + "))";
+		if (debugEnabled)
+			log.info("Searching for object "+queryString+" on domain "+domain);
+		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+		LDAPSearchResults search = conn.search(domain,
+				LDAPConnection.SCOPE_SUB, queryString, null, false,
+				constraints);
+		while (search.hasMore()) {
+			try {
+				entry = search.next();
+				return entry;
+			} catch (LDAPReferralException ldapError) {
+				// Ignore
+			}
+		}
+		return null;
 	}
 
 	private byte[] encodePassword(Password p) throws InternalErrorException {
