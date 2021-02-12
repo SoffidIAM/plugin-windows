@@ -26,10 +26,12 @@ import org.slf4j.Logger;
 
 import com.novell.ldap.LDAPAuthHandler;
 import com.novell.ldap.LDAPAuthProvider;
+import com.novell.ldap.LDAPBindHandler;
 import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
+import com.novell.ldap.LDAPReferralException;
 import com.novell.ldap.LDAPSocketFactory;
 import com.soffid.iam.sync.engine.pool.PoolElement;
 
@@ -299,7 +301,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	@Override
 	protected void closeConnection(LDAPConnection connection) throws LDAPException {
-		log.warn("Closing connection "+connection.getHost(), new Exception());
 		connection.disconnect();
 	}
 
@@ -402,5 +403,6 @@ class AlwaysTrustManager implements X509TrustManager {
             throws CertificateException {
         throw new CertificateException("No allowed to use client certificates");
     }
+
 
 }

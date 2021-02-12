@@ -78,6 +78,7 @@ public class LastLoginLoader implements Runnable {
 	
 	public void run() {
 		try {
+			log.info("Starting last login loader for "+domainController);
 			Security.nestedLogin(tenant, agentName, Security.ALL_PERMISSIONS);
 			LDAPConnection conn = pool.getConnection();
 			Config config = Config.getConfig();
