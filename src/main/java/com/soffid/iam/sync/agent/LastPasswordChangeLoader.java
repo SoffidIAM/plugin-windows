@@ -75,7 +75,7 @@ public class LastPasswordChangeLoader implements Runnable {
 			LDAPConnection conn = pool.getConnection();
 			Config config = Config.getConfig();
 			if (!config.isServer())
-				return;
+ 				return;
 			
 			
 			AccountService accountService = ServiceLocator.instance().getAccountService() ;
