@@ -301,7 +301,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	@Override
 	protected void closeConnection(LDAPConnection connection) throws LDAPException {
-		log.warn("Closing connection "+connection.getHost(), new Exception());
 		connection.disconnect();
 	}
 

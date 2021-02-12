@@ -91,6 +91,7 @@ import com.soffid.iam.service.AccountService;
 import com.soffid.iam.sync.engine.kerberos.ChainConfiguration;
 import com.soffid.iam.sync.engine.kerberos.KerberosManager;
 import com.soffid.iam.sync.intf.AccessLogMgr;
+import com.soffid.iam.sync.intf.KerberosAgent;
 import com.soffid.iam.sync.nas.NASManager;
 import com.soffid.msrpc.samr.SamrService;
 
@@ -127,7 +128,6 @@ import es.caib.seycon.ng.sync.intf.ExtensibleObjectMapping;
 import es.caib.seycon.ng.sync.intf.ExtensibleObjectMgr;
 import es.caib.seycon.ng.sync.intf.ExtensibleObjects;
 import es.caib.seycon.ng.sync.intf.GroupMgr;
-import es.caib.seycon.ng.sync.intf.KerberosAgent;
 import es.caib.seycon.ng.sync.intf.KerberosPrincipalInfo;
 import es.caib.seycon.ng.sync.intf.LogEntry;
 import es.caib.seycon.ng.sync.intf.ReconcileMgr2;
