@@ -2,11 +2,13 @@ package com.soffid.iam.sync.nas;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.rmi.RemoteException;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.logging.LogFactory;
@@ -31,6 +33,7 @@ import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
 import com.hierynomus.smbj.share.Directory;
 import com.hierynomus.smbj.share.DiskShare;
+import com.rapid7.client.dcerpc.RPCException;
 import com.rapid7.client.dcerpc.dto.SID;
 import com.rapid7.client.dcerpc.mssamr.SecurityAccountManagerService;
 import com.rapid7.client.dcerpc.mssamr.dto.DomainHandle;
@@ -39,11 +42,21 @@ import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithName;
 import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithUse;
 import com.rapid7.client.dcerpc.mssamr.dto.ServerHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.UserHandle;
+import com.rapid7.client.dcerpc.msvcctl.dto.IServiceConfigInfo;
+import com.rapid7.client.dcerpc.msvcctl.dto.ServiceConfigInfo;
+import com.rapid7.client.dcerpc.msvcctl.dto.ServiceHandle;
+import com.rapid7.client.dcerpc.msvcctl.dto.ServiceManagerHandle;
+import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceState;
+import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceType;
 import com.rapid7.client.dcerpc.transport.RPCTransport;
 import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
+import com.soffid.iam.api.Account;
+import com.soffid.iam.api.HostService;
 import com.soffid.iam.service.ApplicationService;
 import com.soffid.iam.service.DispatcherService;
 import com.soffid.iam.service.GroupService;
+import com.soffid.msrpc.svcctl.EnumServiceStatus;
+import com.soffid.msrpc.svcctl.ServiceControlManagerService;
 
 import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.exception.InternalErrorException;
@@ -80,7 +93,7 @@ public class NASManager {
 		disconnect();
 	}
 	
-	public  void createFolder (String dir) throws Exception
+	public  void createFolder (String dir, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -89,14 +102,14 @@ public class NASManager {
 			
 		try {
 			connect();
-			createShare ( server, share, path, new PrintWriter(System.out));
+			createShare ( server, share, path, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			createShare ( server, share, path, new PrintWriter(System.out)); // Try again
+			createShare ( server, share, path, new PrintWriter(System.out), auth); // Try again
 		}
 	}
 
-	public  void rm (String dir) throws Exception
+	public  void rm (String dir, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -105,14 +118,14 @@ public class NASManager {
 
 		try {
 			connect();
-			rmShare ( server, share, path, false, new PrintWriter(System.out));
+			rmShare ( server, share, path, false, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			rmShare ( server, share, path, false, new PrintWriter(System.out));
+			rmShare ( server, share, path, false, new PrintWriter(System.out), auth);
 		}
 	}
 
-	public  void rmFolder (String dir) throws Exception
+	public  void rmFolder (String dir, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -121,14 +134,14 @@ public class NASManager {
 
 		try {
 			connect();
-			rmShare ( server, share, path, true, new PrintWriter(System.out));
+			rmShare ( server, share, path, true, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			rmShare ( server, share, path, true, new PrintWriter(System.out));
+			rmShare ( server, share, path, true, new PrintWriter(System.out), auth);
 		}
 	}
 
-	public boolean exists (String file) throws Exception
+	public boolean exists (String file, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (file);
 		String server = uncSplit[0];
@@ -137,14 +150,14 @@ public class NASManager {
 
 		try {
 			connect();
-			return exists ( server, share, path, new PrintWriter(System.out));
+			return exists ( server, share, path, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			return exists ( server, share, path, new PrintWriter(System.out));
+			return exists ( server, share, path, new PrintWriter(System.out), auth);
 		}
 	}
 
-	public List<String[]> getAcl (String dir) throws Exception
+	public List<String[]> getAcl (String dir, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -153,14 +166,14 @@ public class NASManager {
 
 		try {
 			connect();
-			return getAcl ( server, share, path, new PrintWriter(System.out));
+			return getAcl ( server, share, path, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			return getAcl ( server, share, path, new PrintWriter(System.out));
+			return getAcl ( server, share, path, new PrintWriter(System.out), auth);
 		}
 	}
 
-	public void addAcl (String dir, String samAccountName, String permission, String flags) throws Exception
+	public void addAcl (String dir, String samAccountName, String permission, String flags, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -169,14 +182,14 @@ public class NASManager {
 
 		try {
 			connect();
-			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
+			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
+			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth);
 		}
 	}
 
-	public void removeAcl (String dir, String samAccountName, String permission, String flags) throws Exception
+	public void removeAcl (String dir, String samAccountName, String permission, String flags, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -185,16 +198,16 @@ public class NASManager {
 
 		try {
 			connect();
-			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
+			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out));
+			removeAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth);
 		}
 	}
 
 
 
-	public void removeAclInheritance(String dir) throws InternalErrorException, IOException {
+	public void removeAclInheritance(String dir, String[] auth) throws InternalErrorException, IOException {
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
 		String share = uncSplit[1];
@@ -202,14 +215,14 @@ public class NASManager {
 
 		try {
 			connect();
-			removeAclInheritance ( server, share, path, new PrintWriter(System.out));
+			removeAclInheritance ( server, share, path, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			removeAclInheritance ( server, share, path, new PrintWriter(System.out));
+			removeAclInheritance ( server, share, path, new PrintWriter(System.out), auth);
 		}
 	}
 
-	public void setOwner (String dir, String samAccountName) throws Exception
+	public void setOwner (String dir, String samAccountName, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -218,10 +231,10 @@ public class NASManager {
 
 		try {
 			connect();
-			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out));
+			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out), auth);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out));
+			setOwner ( server, share, path, samAccountName, new PrintWriter(System.out), auth);
 		}
 	}
 
@@ -242,14 +255,14 @@ public class NASManager {
 	}
 	
 	public void createShare(String server, String shareName, String path,
-			PrintWriter out) throws IOException, InternalErrorException {
-		log.info("User:     "+user);
-		log.info("Domain:   "+domain);
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
+		log.info("User:     "+auth[1]);
+		log.info("Domain:   "+auth[0]);
 		log.info("Server:   "+server);
 		log.info("Share:    "+shareName);
 
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
@@ -265,10 +278,10 @@ public class NASManager {
 	}
 
 	public void rmShare(String server, String shareName, String path,
-			boolean recursive, PrintWriter out) throws IOException, InternalErrorException {
+			boolean recursive, PrintWriter out, String auth[]) throws IOException, InternalErrorException {
 
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
@@ -284,10 +297,10 @@ public class NASManager {
 	}
 
 	public boolean exists (String server, String shareName, String path,
-			PrintWriter out) throws IOException, InternalErrorException {
+			PrintWriter out, String auth[]) throws IOException, InternalErrorException {
 
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
@@ -299,10 +312,10 @@ public class NASManager {
 
 
 	public List<String[]> getAcl(String server, String shareName, String path,
-			PrintWriter out) throws IOException, InternalErrorException {
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
 		List<String[]> acl = new LinkedList<String[]>();
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 		    EnumSet<AccessMask> access;
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
@@ -332,9 +345,9 @@ public class NASManager {
 
 	public void removeAcl(String server, String shareName, String path,
 			String samAccountName, String permission, String flags,
-			PrintWriter out) throws IOException, InternalErrorException {
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
@@ -374,9 +387,9 @@ public class NASManager {
 	}
 
 	public void removeAclInheritance(String server, String shareName, String path,
-			PrintWriter out) throws IOException, InternalErrorException {
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
@@ -409,9 +422,9 @@ public class NASManager {
 
 	public void addAcl(String server, String shareName, String path,
 			String samAccountName, String permission, String flags,
-			PrintWriter out) throws IOException, InternalErrorException {
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
@@ -465,9 +478,9 @@ public class NASManager {
 
 	public void setOwner(String server, String shareName, String path,
 			String samAccountName, 
-			PrintWriter out) throws IOException, InternalErrorException {
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
 		try (final Connection smbConnection = smbClient.connect(server)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
@@ -721,4 +734,84 @@ public class NASManager {
 		this.host = host;
 	}
 
+	
+	public List<HostService> getServices(List<String> hosts) throws IOException {
+		List<HostService> services = new LinkedList<>();
+		for (String host: hosts) {
+			try (final Connection smbConnection = smbClient.connect(host)) {
+				Session session;
+				final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+				session = smbConnection.authenticate(smbAuthenticationContext);
+			    final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
+			    ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
+			    ServiceManagerHandle smh = svc.openServiceManagerHandle();
+			    
+			    List<EnumServiceStatus> s = svc.enumServicesStatus(smh, ServiceType.WIN32_OWN_PROCESS.getValue()+
+			    			ServiceType.WIN32_SHARE_PROCESS.getValue(), ServiceState.STATE_ALL);
+			    for (EnumServiceStatus service: s) {
+			    	System.out.println(service.getServiceName()+" - "+service.getDisplayName());
+			    	try {
+			    		ServiceHandle h = svc.openServiceHandle(smh, service.getServiceName());
+				    	IServiceConfigInfo config = svc.queryServiceConfig(h);
+				    	System.out.println("   "+config.getServiceStartName());
+				    	svc.closeServiceHandle(h);
+				    	HostService hostService = new HostService();
+				    	hostService.setHostName(host);
+				    	hostService.setService(service.getServiceName());
+				    	hostService.setAccountName(config.getServiceStartName());
+				    	services.add(hostService);
+			    	} catch (RPCException e) {
+			    		
+			    	} 
+			    }
+			    smbConnection.close();
+			}
+		}
+		return services;
+	}
+
+	public void setServicePassword(String service, com.soffid.iam.api.Password password2) throws InternalErrorException {
+		try (final Connection smbConnection = smbClient.connect(this.host)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+			try {
+				final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
+				ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
+				ServiceManagerHandle smh = svc.openServiceManagerHandle();
+				
+				ServiceHandle h = svc.openServiceHandle(smh, service);
+				IServiceConfigInfo config = svc.queryServiceConfig(h);
+				ServiceConfigInfo config2 = new ServiceConfigInfo(
+						config.getServiceType(),
+						config.getStartType(),
+						config.getErrorControl(),
+						config.getBinaryPathName(), 
+						config.getLoadOrderGroup(),
+						config.getTagId(),
+						config.getDependencies(),
+						config.getServiceStartName(),
+						config.getDisplayName(),
+						password.getPassword());
+				
+				svc.changeServiceConfig(h, config2);
+				svc.closeServiceHandle(h);
+			} finally {
+				session.close();
+			}
+		} catch (IOException e) {
+			throw new InternalErrorException("Error fetching services", e);
+		}
+	}
+
+	public String[] parseAuthData ( Map<String, Object> params) {
+		if (params == null)
+			return new String[] {this.domain, this.user, this.password.getPassword()};
+		String user = (String) params.get("_auth_user");
+		String password = (String) params.get("_auth_password");
+		String domain = (String) params.get("_auth_domain");
+		if (password != null)
+			return new String [] {domain, user, password};
+		else
+			return new String[] {this.domain, this.user, this.password.getPassword()};
+	}
 }

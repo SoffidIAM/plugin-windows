@@ -118,5 +118,12 @@
 		</object>
 
 	</agent>
-
+	<agent>
+		<name>Simple Windows Agent</name>
+		<javaClass>com.soffid.iam.sync.agent.SimpleWindowsAgent</javaClass>
+		<userInterface>SimpleWindowsAgent.zul</userInterface>
+		<enableAccessControl>false</enableAccessControl>
+		<authoritativeSource>false</authoritativeSource>
+		<enableAttributeMapping>true</enableAttributeMapping>
+	</agent>
 </seuServerPlugin>

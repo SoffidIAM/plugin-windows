@@ -345,6 +345,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 }
 
 class AlwaysTrustManager implements X509TrustManager {
+	private static String lock = new String();
     private KeyStore ks;
 	private File cacertsConf;
 
@@ -356,7 +357,13 @@ class AlwaysTrustManager implements X509TrustManager {
         cacertsConf = new File(configDir, "cacerts");
 
         ks = KeyStore.getInstance("JKS");
-        ks.load(new FileInputStream (cacertsConf), "changeit".toCharArray());
+        try {
+			synchronized (lock) {
+				final FileInputStream in = new FileInputStream (cacertsConf);
+				ks.load(in, null);
+				in.close();
+			}
+        } catch (Exception e) {}
 
 	}
 
@@ -386,7 +393,11 @@ class AlwaysTrustManager implements X509TrustManager {
 			if (ks.containsAlias(entryName))
 				ks.deleteEntry(entryName);
 			ks.setCertificateEntry(entryName, arg0[0]);
-		    ks.store( new FileOutputStream ( cacertsConf ), "changeit".toCharArray());
+			synchronized (lock) {
+			    final FileOutputStream out = new FileOutputStream ( cacertsConf );
+				ks.store( out, "changeit".toCharArray());
+				out.close();
+			}
 		} catch (KeyStoreException e) {
 			throw new CertificateException ("Error validating certificate", e);
 		} catch (NoSuchAlgorithmException e) {
