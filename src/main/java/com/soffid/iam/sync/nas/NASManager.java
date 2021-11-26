@@ -33,6 +33,7 @@ import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
 import com.hierynomus.smbj.share.Directory;
 import com.hierynomus.smbj.share.DiskShare;
+import com.hierynomus.smbj.share.File;
 import com.rapid7.client.dcerpc.RPCException;
 import com.rapid7.client.dcerpc.dto.SID;
 import com.rapid7.client.dcerpc.mssamr.SecurityAccountManagerService;
@@ -483,11 +484,34 @@ public class NASManager {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
-		    	Directory of = null;
 		    	if ( share.folderExists(path))
 		    	{
-		    		of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+		    		Directory of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
 			    				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+		    		if (of == null)
+		    			throw new IOException ("File "+path+" does not exist");
+		    		
+			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
+			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
+
+			    	com.hierynomus.msdtyp.SID ownerSid = sd.getOwnerSid();
+			    	String owner = getNameOf(out, ownerSid);
+			    	
+			    	String userSid = getSid(samAccountName);
+			    	if (userSid == null)
+			    		throw new InternalErrorException ("Unable to find "+user+"'s SID");
+			    	
+			    	sd = new SecurityDescriptor(sd.getControl(), com.hierynomus.msdtyp.SID.fromString(userSid),
+			    			sd.getGroupSid(),
+			    			sd.getSacl(),
+			    			sd.getDacl());
+			    	of.setSecurityInformation(sd);
+			    	of.close();
+		    	}
+		    	else if ( share.fileExists(path))
+		    	{
+	    			File of = share.openFile(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+		    				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
 		    		if (of == null)
 		    			throw new IOException ("File "+path+" does not exist");
 		    		

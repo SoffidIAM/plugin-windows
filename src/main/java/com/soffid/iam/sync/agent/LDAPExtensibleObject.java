@@ -361,13 +361,6 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		return keySet();
 	}
 	
-	class RetrieveLastLogonThread extends Thread
-	{
-		public void run ()
-		{
-			
-		}
-	}
 }
 
 

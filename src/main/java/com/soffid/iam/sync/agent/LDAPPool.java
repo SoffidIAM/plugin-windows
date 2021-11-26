@@ -21,19 +21,15 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.apache.commons.logging.LogFactory;
-import org.apache.xml.security.stax.ext.InboundSecurityContext;
 import org.slf4j.Logger;
 
 import com.novell.ldap.LDAPAuthHandler;
 import com.novell.ldap.LDAPAuthProvider;
-import com.novell.ldap.LDAPBindHandler;
 import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
-import com.novell.ldap.LDAPReferralException;
 import com.novell.ldap.LDAPSocketFactory;
-import com.soffid.iam.sync.engine.pool.PoolElement;
 
 import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.config.Config;
@@ -176,8 +172,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		Exception lastException = null;
 		for (String host: ldapHosts)
 		{
-//			log.info("============ Creating connection to "+host);
-//			diag(log);
 			try {
 				return createConnection(host);
 			} catch (Exception e) {
@@ -198,6 +192,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			return createConnection (host, useSsl, ldapPort);
 		} catch (Exception e) {
 			if (alwaysTrust && useSsl) {
+				log.warn("Error creating SSL connection to "+host, e);
 				return createConnection (host, false, LDAPConnection.DEFAULT_PORT);
 			}
 			else
@@ -238,7 +233,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			else
 				ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
 			
-			conn = new LDAPConnection(ldapSecureSocketFactory);
+			conn = new SecureLDAPConnection(ldapSecureSocketFactory);
 		} else  {
 			conn = new LDAPConnection();
 			if (debug && false)
@@ -389,14 +384,20 @@ class AlwaysTrustManager implements X509TrustManager {
 //			LogFactory.getLog(getClass()).info("Unknown cert "+arg0[0]);
 			MessageDigest d = MessageDigest.getInstance("SHA-1");
 			String entryName = Base64.encodeBytes( d.digest(arg0[0].getEncoded()), Base64.DONT_BREAK_LINES );
-			LogFactory.getLog(getClass()).info("Registering entry "+entryName);
 			if (ks.containsAlias(entryName))
-				ks.deleteEntry(entryName);
-			ks.setCertificateEntry(entryName, arg0[0]);
-			synchronized (lock) {
-			    final FileOutputStream out = new FileOutputStream ( cacertsConf );
-				ks.store( out, "changeit".toCharArray());
-				out.close();
+			{
+				if (! arg0[0].equals(ks.getCertificate(entryName))) {
+					ks.deleteEntry(entryName);
+				}
+			}
+			if (! ks.containsAlias(entryName)) {
+				LogFactory.getLog(getClass()).info("Registering entry "+entryName);
+				ks.setCertificateEntry(entryName, arg0[0]);
+				synchronized (lock) {
+				    final FileOutputStream out = new FileOutputStream ( cacertsConf );
+					ks.store( out, "changeit".toCharArray());
+					out.close();
+				}
 			}
 		} catch (KeyStoreException e) {
 			throw new CertificateException ("Error validating certificate", e);
