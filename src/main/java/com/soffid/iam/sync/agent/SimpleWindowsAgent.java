@@ -12,44 +12,29 @@ import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
-import com.ibm.icu.util.BytesTrie.Iterator;
 import com.rapid7.client.dcerpc.RPCException;
 import com.rapid7.client.dcerpc.dto.SID;
 import com.rapid7.client.dcerpc.mserref.SystemErrorCode;
 import com.rapid7.client.dcerpc.mssamr.dto.AliasGeneralInformation;
 import com.rapid7.client.dcerpc.mssamr.dto.AliasHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.DomainHandle;
-import com.rapid7.client.dcerpc.mssamr.dto.GroupGeneralInformation;
-import com.rapid7.client.dcerpc.mssamr.dto.GroupHandle;
-import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithAttributes;
 import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithName;
 import com.rapid7.client.dcerpc.mssamr.dto.ServerHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.UserAllInformation;
 import com.rapid7.client.dcerpc.mssamr.dto.UserHandle;
-import com.rapid7.client.dcerpc.msvcctl.dto.IServiceConfigInfo;
-import com.rapid7.client.dcerpc.msvcctl.dto.ServiceHandle;
-import com.rapid7.client.dcerpc.msvcctl.dto.ServiceManagerHandle;
-import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceState;
-import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceType;
 import com.rapid7.client.dcerpc.transport.RPCTransport;
 import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
 import com.soffid.iam.api.Account;
 import com.soffid.iam.api.AccountStatus;
-import com.soffid.iam.api.HostService;
 import com.soffid.iam.api.Password;
-import com.soffid.iam.api.PasswordValidation;
 import com.soffid.iam.api.Role;
 import com.soffid.iam.api.RoleGrant;
 import com.soffid.iam.api.User;
-import com.soffid.iam.sync.agent.Agent;
 import com.soffid.iam.sync.intf.ReconcileMgr2;
 import com.soffid.iam.sync.intf.UserMgr;
-import com.soffid.iam.sync.nas.NASManager;
 import com.soffid.msrpc.samr.DispEntry;
 import com.soffid.msrpc.samr.SamrService;
 import com.soffid.msrpc.samr.UserInfo;
-import com.soffid.msrpc.svcctl.EnumServiceStatus;
-import com.soffid.msrpc.svcctl.ServiceControlManagerService;
 
 import es.caib.seycon.ng.exception.InternalErrorException;
 
@@ -379,13 +364,15 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 			    			found = true;
 			    			if (isDebug())
 			    				log.info("Opening user "+account.getName()+" at SAM domain "+n.getName());
-			    			UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
+			    			UserHandle userHandle = sam.openUser(domainHandle, i, 0x000F07FF);
 			    			updateUserAttributes(sam, userHandle, account);
 			    			updateUserPermissions(sam, sid.resolveRelativeID(i), account, perms);
 			    		}		    	
 			    	} catch (RPCException e) {
 			    		if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED) {
 			    			
+			    		} else {
+			    			throw e;
 			    		}
 			    	}
 			    }
@@ -528,7 +515,9 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 		else {
 			UserInfo ui = sam.queryUserInfo(userHandle);
 			ui.setFullName(account.getDescription());
-			ui.setDescription((String) account.getAttributes().get("description"));
+			final String description = (String) account.getAttributes().get("description");
+			if (description != null)
+				ui.setDescription(description);
 			if (account.isDisabled())
 				ui.setFlags(ui.getFlags() | 0x1); // Disabled
 			else
@@ -542,20 +531,23 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 
 	@Override
 	public void updateUser(Account account) throws RemoteException, InternalErrorException {
-		updateUser(account, null);
+		if (!onlyPassword)
+			updateUser(account, null);
 	}
 
 	@Override
 	public void removeUser(String userName) throws RemoteException, InternalErrorException {
-		Account acc = getServer().getAccountInfo(userName, getAgentName());
-		if (acc == null) {
-			acc = new Account();
-			acc.setName(userName);
-			acc.setDescription(userName);
-			acc.setStatus(AccountStatus.REMOVED);
-			acc.setDisabled(true);
+		if (!onlyPassword) {
+			Account acc = getServer().getAccountInfo(userName, getAgentName());
+			if (acc == null) {
+				acc = new Account();
+				acc.setName(userName);
+				acc.setDescription(userName);
+				acc.setStatus(AccountStatus.REMOVED);
+				acc.setDisabled(true);
+			}
+			updateUser(acc);
 		}
-		updateUser(acc);
 	}
 
 	@Override
@@ -588,7 +580,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 			    	for (int i: r) {
 			    		if (isDebug())
 			    			log.info("Opening user "+userAccount+" at SAM domain "+n.getName());
-			    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
+			    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x000F07FF);
 			    		try {
 			    			sam.setPassword(userHandle, password.getPassword(), mustchange);
 			    			found = true;
