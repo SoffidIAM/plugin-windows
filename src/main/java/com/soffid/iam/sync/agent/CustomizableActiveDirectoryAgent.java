@@ -375,8 +375,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				log.warn("Warning: Using plain LDAP sockets. The connection is not secure.");
 			if (multiDomain)
 			{
-				searchDomains (conn, excludeDomains);
 				searchLegacyDomains(conn, excludeDomains);
+				searchDomains (conn, excludeDomains);
 			}
 			else
 			{
@@ -427,13 +427,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			LDAPConnection conn = getConnection(domain);
 			try {
 				entry = conn.read(dn);
+			} catch (LDAPException e) {
+				throw new InternalErrorException("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server", e);
 			} finally {
 				returnConnection(domain);
 			}
-			if (entry == null)
-				log.warn("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server");
-			samDomainName = searchNTDomainForDN(entry.getDN());
-			samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
+			if (entry == null) {
+			} else {
+				samDomainName = searchNTDomainForDN(entry.getDN());
+				samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
+			}
 		}
 	}
 
@@ -459,6 +462,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 		try {
 			LDAPConnection p = pool.getConnection();
+			if (readOnly || getDispatcher().isReadOnly()) p = new ReadOnlyConnection(p);
 			return p;
 		} catch (Exception e) {
 			if (debugEnabled)
@@ -583,6 +587,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
     private void createChildPools(LDAPPool pool2) throws InternalErrorException {
 		LDAPConnection conn;
 		LinkedList<LDAPPool> children = new LinkedList<LDAPPool>();
+		String[] excluded = excludeDomains == null ? new String[0] : excludeDomains.split(" +");
+		Arrays.sort(excluded);
 		try {
 			log.info("Resolving domain controllers for "+pool2.getLdapHost());
 			
@@ -600,8 +606,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					if (dnsName != null)
 					{
 						String hostName = dnsName.getStringValue();
-						log.info("  Found domain controller: "+hostName);
-						children.add( createChildPool(pool2.getBaseDN(), hostName, pool2));
+						if (Arrays.binarySearch(excluded, dnsName) >= 0)
+							log.info("  IGNORING domain controller: "+hostName);
+						else {
+							log.info("  Found domain controller: "+hostName);
+							children.add( createChildPool(pool2.getBaseDN(), hostName, pool2));
+						}
 					}
 				} catch (LDAPReferralException e)
 				{
@@ -622,7 +632,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	private LDAPPool createChildPool(String base, String host, LDAPPool parent) {
 		LDAPPool pool = new LDAPPool();
-		pool.setUseSsl( false );
+		pool.setUseSsl( parent.isUseSsl() );
 		pool.setBaseDN( base );
 		pool.setLdapHost(host);
 		pool.setLdapPort( LDAPConnection.DEFAULT_PORT );
@@ -665,7 +675,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				excludeDomains.trim().toLowerCase().split(" +");
 		Arrays.sort(excluded);
 		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
-		constraints.setReferralFollowing(true);
+		constraints.setReferralFollowing(false);
+		constraints.setServerTimeLimit(10);
 		constraints.setTimeLimit(5000);
 		LDAPSearchResults query = conn.search(base,
 					LDAPConnection.SCOPE_SUB, queryString, null, false,
@@ -689,7 +700,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						if ( Arrays.binarySearch(excluded, dn.toLowerCase()) < 0 &&
 								Arrays.binarySearch(excluded, server) < 0 &&
 								!lastPart.endsWith("dnszones") && 
-								!dn.contains("cn=configuration,"))
+								!dn.contains("cn=configuration,") &&
+								getPool(dn) == null)
 						{
 							reconfigurePool(server, dn);
 						}
@@ -713,7 +725,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				excludeDomains.trim().toLowerCase().split(" +");
 		Arrays.sort(excluded);
 		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
-		constraints.setReferralFollowing(true);
+		constraints.setReferralFollowing(false);
 		
 		LDAPSearchResults query = conn.search("cn=configuration,"+base,
 					LDAPConnection.SCOPE_SUB, "(nETBIOSName=*)", null, false,
@@ -3978,6 +3990,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	private Long lastUploadedChange = null;
 
 	protected Stack<LdapSearch> searches = null;
+
+	private boolean readOnly = false;
 	public Collection<AuthoritativeChange> getChanges(String nextChange)
 			throws InternalErrorException {
 		Collection<AuthoritativeChange> changes = new LinkedList<AuthoritativeChange>();
@@ -4787,6 +4801,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		} catch (UnknownUserException e1) {
 			sourceObject = new AccountExtensibleObject( account, getServer());
 		}
+		readOnly = true;
 		List<String[]> changes = new LinkedList<String[]>();
 		ExtensibleObjects objects = objectTranslator
 				.generateObjects(sourceObject);
@@ -4832,6 +4847,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public List<String[]> getRoleChangesToApply (Rol role) throws RemoteException, InternalErrorException {
 		ExtensibleObject sourceObject ;
 		sourceObject = new RoleExtensibleObject( role, getServer());
+		readOnly = true;
 		List<String[]> changes = new LinkedList<String[]>();
 		ExtensibleObjects objects = objectTranslator
 				.generateObjects(sourceObject);
