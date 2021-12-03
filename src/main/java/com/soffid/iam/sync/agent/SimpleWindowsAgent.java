@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
+import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.mssmb2.SMBApiException;
 import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.auth.AuthenticationContext;
@@ -342,6 +343,8 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 
 	@Override
 	public void updateUser(Account account, User user) throws RemoteException, InternalErrorException {
+		if (onlyPassword)
+			return;
 		Collection<RoleGrant> perms = getServer().getAccountExplicitRoles(account.getName(), account.getSystem());
 		try {
 			Session session = getSession();
@@ -429,11 +432,11 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 				log.info("Searching alias "+oldPerm.getRoleName()+" at SAM domain "+n.getName());
 			int [] r;
 			try {
-				r = sam.lookupNames(domainHandle, new String[] {account.getName()});
+				r = sam.lookupNames(domainHandle, new String[] {oldPerm.getRoleName()});
 				for (int i: r) {
 					if (isDebug())
 						log.info("Opening alias "+oldPerm.getRoleName()+" at SAM domain "+n.getName());
-					AliasHandle aliasHandle = sam.openAlias(domainHandle, i);
+					AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
 					try {
 						sam.deleteAliasMember(aliasHandle, userSid);
 					} finally {
@@ -460,11 +463,11 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 				log.info("Searching alias "+newPerm.getRoleName()+" at SAM domain "+n.getName());
 			int [] r;
 			try {
-				r = sam.lookupNames(domainHandle, new String[] {account.getName()});
+				r = sam.lookupNames(domainHandle, new String[] {newPerm.getRoleName()});
 				for (int i: r) {
 					if (isDebug())
 						log.info("Opening alias "+newPerm.getRoleName()+" at SAM domain "+n.getName());
-					AliasHandle aliasHandle = sam.openAlias(domainHandle, i);
+					AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
 					try {
 						sam.addAliasMember(aliasHandle, userSid);
 					} finally {
@@ -474,7 +477,6 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 				}		    	
 			} catch (RPCException e) {
 				if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED) {
-					
 				}
 			}
 		}
