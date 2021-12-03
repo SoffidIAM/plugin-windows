@@ -10,7 +10,7 @@
 	<artifactId>windows-plugin</artifactId>
 	<packaging>jar</packaging>
 	<name>Windows plugin</name>
-	<version>5.2.3-SNAPSHOT</version>
+	<version>5.2.3</version>
 	<dependencies>
 		<dependency>
 			<groupId>com.novell.ldap</groupId>
@@ -59,7 +59,7 @@
 	</licenses>
 	<scm>
 		<connection>scm:git:ssh://git@stash.dev.lab:7999/iam2/plugin-windows.git</connection>
-		<tag>HEAD</tag>
+		<tag>windows-plugin-5.2.3</tag>
 	</scm>
 
 
