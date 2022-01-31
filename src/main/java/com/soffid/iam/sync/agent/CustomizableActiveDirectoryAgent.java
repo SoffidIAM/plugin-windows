@@ -1417,6 +1417,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			ExtensibleObject object, ExtensibleObject source, List<String[]> changes)
 			throws InternalErrorException, UnsupportedEncodingException, IOException, Exception, LDAPException {
 		log.info("Update existing object");
+		boolean modifyuserPrincipalName = false;
 		if (changes != null || preUpdate(source, object, entry)) {
 			LinkedList<LDAPModification> modList = new LinkedList<LDAPModification>();
 			if (isDebug())
@@ -1473,6 +1474,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 									new LDAPAttribute(attribute,
 											(byte[]) ov)));
 						} else {
+							if (attribute.equals("userPrincipalName"))
+								modifyuserPrincipalName = true;
 							modList.add(new LDAPModification(
 									LDAPModification.ADD,
 									new LDAPAttribute(attribute, value)));
@@ -1488,11 +1491,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 										LDAPModification.REPLACE,
 										new LDAPAttribute(attribute,
 												(byte[]) ov)));
-							else
+							else {
+								if (attribute.equals("userPrincipalName"))
+									modifyuserPrincipalName = true;
 								modList.add(new LDAPModification(
 										LDAPModification.REPLACE,
 										new LDAPAttribute(attribute,
 												value)));
+							}
 						}
 					}
 				}
@@ -1520,25 +1526,26 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			}
 			else if (modList.size() > 0) {
-				// Temporary patch
-				String upn = vom.toSingleString(object.getAttribute("userPrincipalName"));
-				String objectClass = vom.toSingleString(object
-						.getAttribute("objectClass"));
-				if (upn != null && objectClass != null)
-				{
-					LDAPEntry entry2 = findUpnObject (objectClass, upn);
-					if (entry2 != null && ! entry2.getDN().equals(entry.getDN()))
+				if (modifyuserPrincipalName) {
+					// Temporary patch
+					String upn = vom.toSingleString(object.getAttribute("userPrincipalName"));
+					String objectClass = vom.toSingleString(object
+							.getAttribute("objectClass"));
+					if (upn != null && objectClass != null)
 					{
-						log.info("Removing userPrincipalName from "+entry2.getDN());
-						LDAPModification[] mods2 = new LDAPModification[] {
-								new LDAPModification(
-										LDAPModification.DELETE,
-										new LDAPAttribute("userPrincipalName", upn))
-						};
-						conn.modify(entry2.getDN(), mods2);
+						LDAPEntry entry2 = findUpnObject (objectClass, upn);
+						if (entry2 != null && ! entry2.getDN().equals(entry.getDN()))
+						{
+							log.info("Moving userPrincipalName from "+entry2.getDN()+" to "+entry.getDN());
+							LDAPModification[] mods2 = new LDAPModification[] {
+									new LDAPModification(
+											LDAPModification.DELETE,
+											new LDAPAttribute("userPrincipalName", upn))
+							};
+							conn.modify(entry2.getDN(), mods2);
+						}
 					}
-				}
-				
+				}				
 				LDAPModification[] mods = new LDAPModification[modList
 						.size()];
 				mods = (LDAPModification[]) modList.toArray(mods);
