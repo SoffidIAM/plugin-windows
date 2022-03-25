@@ -20,8 +20,11 @@ import com.hierynomus.msdtyp.SecurityInformation;
 import com.hierynomus.msdtyp.ace.ACE;
 import com.hierynomus.msdtyp.ace.AceFlags;
 import com.hierynomus.msdtyp.ace.AceTypes;
+import com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation;
+import com.hierynomus.msfscc.fileinformation.ShareInfo;
 import com.hierynomus.mssmb2.SMB2CreateDisposition;
 import com.hierynomus.mssmb2.SMB2Dialect;
+import com.hierynomus.mssmb2.SMB2FileId;
 import com.hierynomus.mssmb2.SMB2ShareAccess;
 import com.hierynomus.protocol.commons.EnumWithValue.EnumUtils;
 import com.hierynomus.security.bc.BCSecurityProvider;
@@ -32,6 +35,7 @@ import com.hierynomus.smbj.common.SMBRuntimeException;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
 import com.hierynomus.smbj.share.Directory;
+import com.hierynomus.smbj.share.DiskEntry;
 import com.hierynomus.smbj.share.DiskShare;
 import com.hierynomus.smbj.share.File;
 import com.rapid7.client.dcerpc.RPCException;
@@ -43,6 +47,9 @@ import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithName;
 import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithUse;
 import com.rapid7.client.dcerpc.mssamr.dto.ServerHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.UserHandle;
+import com.rapid7.client.dcerpc.mssrvs.dto.NetShareInfo0;
+import com.rapid7.client.dcerpc.mssrvs.dto.NetShareInfo1;
+import com.rapid7.client.dcerpc.mssrvs.dto.NetShareInfo503;
 import com.rapid7.client.dcerpc.msvcctl.dto.IServiceConfigInfo;
 import com.rapid7.client.dcerpc.msvcctl.dto.ServiceConfigInfo;
 import com.rapid7.client.dcerpc.msvcctl.dto.ServiceHandle;
@@ -56,6 +63,7 @@ import com.soffid.iam.api.HostService;
 import com.soffid.iam.service.ApplicationService;
 import com.soffid.iam.service.DispatcherService;
 import com.soffid.iam.service.GroupService;
+import com.soffid.msrpc.srvr.ServerService;
 import com.soffid.msrpc.svcctl.EnumServiceStatus;
 import com.soffid.msrpc.svcctl.ServiceControlManagerService;
 
@@ -158,6 +166,45 @@ public class NASManager {
 		}
 	}
 
+	public List<String[]> listShares (String server, String[] auth) throws Exception
+	{ 
+		try {
+			connect();
+			return listShares ( server, new PrintWriter(System.out), auth);
+		} catch (IOException | SMBRuntimeException e) {
+			reconnect();
+			return listShares ( server, new PrintWriter(System.out), auth);
+		}
+	}
+
+	public long getVolumeSize (String file, String[] auth) throws Exception
+	{ 
+		String[] uncSplit = splitPath (file);
+		String server = uncSplit[0];
+		String shareName = uncSplit[1];
+		try {
+			connect();
+			return getVolumeSize ( server, shareName, new PrintWriter(System.out), auth);
+		} catch (IOException | SMBRuntimeException e) {
+			reconnect();
+			return getVolumeSize ( server, shareName, new PrintWriter(System.out),   auth);
+		}
+	}
+
+	public long getFreeSize (String file, String[] auth) throws Exception
+	{ 
+		String[] uncSplit = splitPath (file);
+		String server = uncSplit[0];
+		String shareName = uncSplit[1];
+		try {
+			connect();
+			return getFreeSize(server, shareName, new PrintWriter(System.out), auth);
+		} catch (IOException | SMBRuntimeException e) {
+			reconnect();
+			return getFreeSize(server, shareName, new PrintWriter(System.out), auth);
+		}
+	}
+
 	public List<String[]> getAcl (String dir, String[] auth) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
@@ -174,7 +221,13 @@ public class NASManager {
 		}
 	}
 
-	public void addAcl (String dir, String samAccountName, String permission, String flags, String[] auth) throws Exception
+	public void addAcl (String dir, String samAccountName, String permission, String flags, String[] auth) 
+			throws Exception
+	{
+		addAcl(dir, samAccountName, permission, flags, auth, false);
+	}
+
+	public void addAcl (String dir, String samAccountName, String permission, String flags, String[] auth, boolean recursive) throws Exception
 	{ 
 		String[] uncSplit = splitPath (dir);
 		String server = uncSplit[0];
@@ -183,10 +236,10 @@ public class NASManager {
 
 		try {
 			connect();
-			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth);
+			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth, recursive);
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
-			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth);
+			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth, recursive);
 		}
 	}
 
@@ -255,6 +308,63 @@ public class NASManager {
 		
 	}
 	
+	public List<String[]> listShares(String server,
+			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
+		log.info("User:     "+auth[1]);
+		log.info("Domain:   "+auth[0]);
+		log.info("Server:   "+server);
+
+		try (final Connection smbConnection = smbClient.connect(server)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+
+		    RPCTransport transport2 = SMBTransportFactories.SRVSVC.getTransport(session);
+		    ServerService srv = new ServerService(transport2);
+		    List<String[]> l = new LinkedList<>();
+		    for (NetShareInfo503 share: srv.getShares503()) {
+		    	l.add(new String[] {share.getNetName(), share.getRemark(), Integer.toString(share.getType()), share.getServerName()});
+		    }
+		    return l;
+		}
+	}
+
+	private long getVolumeSize(String server, String shareName, PrintWriter printWriter, String[] auth) throws IOException {
+		log.info("User:     "+auth[1]);
+		log.info("Domain:   "+auth[0]);
+		log.info("Server:   "+server);
+		log.info("Share:    "+shareName);
+
+		try (final Connection smbConnection = smbClient.connect(server)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+
+			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+		    	Directory of = null;
+		    	ShareInfo i = share.getShareInformation();
+		    	return i.getTotalSpace();
+			}
+		}
+	}
+
+	private long getFreeSize(String server, String shareName, PrintWriter printWriter, String[] auth) throws IOException {
+		log.info("User:     "+auth[1]);
+		log.info("Domain:   "+auth[0]);
+		log.info("Server:   "+server);
+		log.info("Share:    "+shareName);
+
+		try (final Connection smbConnection = smbClient.connect(server)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+		    
+			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+		    	Directory of = null;
+		    	ShareInfo i = share.getShareInformation();
+		    	return i.getFreeSpace();
+			}
+		}
+	}
+
+
 	public void createShare(String server, String shareName, String path,
 			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
 		log.info("User:     "+auth[1]);
@@ -288,7 +398,7 @@ public class NASManager {
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
 		    	if (share.folderExists(path) && recursive)
-		    		share.rmdir(path, true);
+		    		recursiveRemove(share, path, auth[1], out);
 		    	else if (share.folderExists(path))
 		    		share.rmdir(path, false);
 		    	else if (share.fileExists(path))
@@ -296,6 +406,35 @@ public class NASManager {
 			}
 		}
 	}
+
+	private void recursiveRemove(DiskShare share, String path, String auth, PrintWriter out) throws IOException, InternalErrorException {
+		setDirectoryOwner(share, path, auth, out);
+		Directory of = share.openDirectory(path, EnumSet.of(AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+		addAcl(of, path, auth, "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE");
+		of.close();
+
+		of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_READ,AccessMask.GENERIC_WRITE), 
+				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+		for (FileIdBothDirectoryInformation child: of.list()) {
+			if (! ".".equals(child.getFileName()) && ! "..".equals(child.getFileName())) {
+				String fileName = path+"/"+child.getFileName();
+				if (share.folderExists(fileName))
+					recursiveRemove(share, fileName, auth, out);
+				else if (share.fileExists(fileName)) {
+					setFileOwner(fileName, share, auth, out);
+					File of2 = share.openFile(fileName, EnumSet.of(AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+							null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+					addAcl(of2, path, auth, "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE");
+					of2.close();
+					share.rm(fileName);					
+				}
+			}
+		}
+		of.close();
+		share.rmdir(path, false);
+	}
+
 
 	public boolean exists (String server, String shareName, String path,
 			PrintWriter out, String auth[]) throws IOException, InternalErrorException {
@@ -423,43 +562,67 @@ public class NASManager {
 
 	public void addAcl(String server, String shareName, String path,
 			String samAccountName, String permission, String flags,
-			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
+			PrintWriter out, String[] auth, boolean recursive) throws IOException, InternalErrorException {
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
-		    	Directory of = null;
-		    	if ( share.folderExists(path))
-		    	{
-		    		of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
-			    				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
-		    		if (of == null)
-		    			throw new IOException ("File "+path+" does not exist");
-		    		
-			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
-
-			    	String userSid = getSid(samAccountName);
-			    	if (userSid == null)
-			    		throw new InternalErrorException ("Unable to finde "+samAccountName+"'s SID");
-
-			    	Set<AceFlags> inheritFlags = (Set<AceFlags>) stringToEnum(flags, AceFlags.class);
-			    	Set<AccessMask> accessMasks = (Set<AccessMask>) stringToEnum(permission, AccessMask.class);
-					ACE ace = AceTypes.accessAllowedAce( inheritFlags,
-								accessMasks , 
-								com.hierynomus.msdtyp.SID.fromString(userSid));
-			    	sd.getDacl().getAces().add(0, ace);
-			    	
-			    	normalizeAces(sd.getDacl().getAces());
-			    	
-			    	sd.getControl().clear();
-			    	sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));
-			    	of.setSecurityInformation(sd);
-			    	of.close();
-		    	}
+		    	DiskEntry of = null;
+		    	addAclRecursively(path, samAccountName, permission, flags, share, recursive);
 			}
 		}
-		return;
 	}
+
+	public void addAclRecursively(String path, String samAccountName, String permission, String flags, DiskShare share, boolean recursive)
+			throws IOException, InternalErrorException {
+		DiskEntry of;
+		if ( share.folderExists(path))
+		{
+			of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+						null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+			addAcl(of, path, samAccountName, permission, flags);
+			if (recursive) {
+				for (FileIdBothDirectoryInformation child: share.list(path)) {
+					if (! ".".equals(child.getFileName()) && ! "..".equals(child.getFileName()))
+						addAclRecursively(path+"/"+child.getFileName(), samAccountName, permission, flags, share, recursive);
+				}
+			}
+			of.close();
+		}
+		if ( share.fileExists(path))
+		{
+			of = share.openFile(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+						null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+			addAcl(of, path, samAccountName, permission, flags);
+			of.close();
+		}
+	}
+
+	public void addAcl(DiskEntry of, String path, String samAccountName, String permission, String flags)
+			throws IOException, InternalErrorException {
+		if (of == null)
+			throw new IOException ("File "+path+" does not exist");
+		
+		SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
+
+		String userSid = getSid(samAccountName);
+		if (userSid == null)
+			throw new InternalErrorException ("Unable to find "+samAccountName+"'s SID");
+
+		Set<AceFlags> inheritFlags = (Set<AceFlags>) stringToEnum(flags, AceFlags.class);
+		Set<AccessMask> accessMasks = (Set<AccessMask>) stringToEnum(permission, AccessMask.class);
+		ACE ace = AceTypes.accessAllowedAce( inheritFlags,
+					accessMasks , 
+					com.hierynomus.msdtyp.SID.fromString(userSid));
+		sd.getDacl().getAces().add(0, ace);
+		
+		normalizeAces(sd.getDacl().getAces());
+		
+		sd.getControl().clear();
+		sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));
+		of.setSecurityInformation(sd);
+	}
+	
 
 	private void normalizeAces(List<ACE> aces) {
 		Set<String> used = new HashSet<>();
@@ -486,55 +649,58 @@ public class NASManager {
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	if ( share.folderExists(path))
 		    	{
-		    		Directory of = share.openDirectory(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
-			    				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
-		    		if (of == null)
-		    			throw new IOException ("File "+path+" does not exist");
-		    		
-			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
-			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
-
-			    	com.hierynomus.msdtyp.SID ownerSid = sd.getOwnerSid();
-			    	String owner = getNameOf(out, ownerSid);
-			    	
-			    	String userSid = getSid(samAccountName);
-			    	if (userSid == null)
-			    		throw new InternalErrorException ("Unable to find "+user+"'s SID");
-			    	
-			    	sd = new SecurityDescriptor(sd.getControl(), com.hierynomus.msdtyp.SID.fromString(userSid),
-			    			sd.getGroupSid(),
-			    			sd.getSacl(),
-			    			sd.getDacl());
-			    	of.setSecurityInformation(sd);
-			    	of.close();
+		    		setDirectoryOwner(share, path, samAccountName, out);
 		    	}
 		    	else if ( share.fileExists(path))
 		    	{
-	    			File of = share.openFile(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
-		    				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
-		    		if (of == null)
-		    			throw new IOException ("File "+path+" does not exist");
-		    		
-			    	SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
-			    			SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
-
-			    	com.hierynomus.msdtyp.SID ownerSid = sd.getOwnerSid();
-			    	String owner = getNameOf(out, ownerSid);
-			    	
-			    	String userSid = getSid(samAccountName);
-			    	if (userSid == null)
-			    		throw new InternalErrorException ("Unable to find "+user+"'s SID");
-			    	
-			    	sd = new SecurityDescriptor(sd.getControl(), com.hierynomus.msdtyp.SID.fromString(userSid),
-			    			sd.getGroupSid(),
-			    			sd.getSacl(),
-			    			sd.getDacl());
-			    	of.setSecurityInformation(sd);
-			    	of.close();
+	    			setFileOwner(path, share, samAccountName, out);
 		    	}
 			}
 		}
 		return;
+	}
+
+	public void setFileOwner(String path, DiskShare share, String samAccountName, PrintWriter out)
+			throws IOException, InternalErrorException {
+		File of = share.openFile(path, EnumSet.of(AccessMask.WRITE_OWNER), 
+				null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+		if (of == null)
+			throw new IOException ("File "+path+" does not exist");
+		
+		String userSid = getSid(samAccountName);
+		if (userSid == null)
+			throw new InternalErrorException ("Unable to find "+user+"'s SID");
+		
+		SecurityDescriptor sd = new SecurityDescriptor(EnumSet.of(Control.NONE), 
+				com.hierynomus.msdtyp.SID.fromString(userSid),
+				null,
+				null,
+				null);
+		of.setSecurityInformation(sd, EnumSet.of(SecurityInformation.OWNER_SECURITY_INFORMATION));
+		of.close();
+	}
+
+	public void setDirectoryOwner(DiskShare share, String path, String samAccountName, PrintWriter out)
+			throws IOException, InternalErrorException {
+		Directory of = share.openDirectory(path, EnumSet.of(AccessMask.WRITE_OWNER), 
+					null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+		if (of == null)
+			throw new IOException ("File "+path+" does not exist");
+		
+//		SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION,
+//				SecurityInformation.OWNER_SECURITY_INFORMATION, SecurityInformation.GROUP_SECURITY_INFORMATION) );
+
+		String userSid = getSid(samAccountName);
+		if (userSid == null)
+			throw new InternalErrorException ("Unable to find "+user+"'s SID");
+		
+		SecurityDescriptor sd = new SecurityDescriptor(EnumSet.of(Control.NONE), 
+				com.hierynomus.msdtyp.SID.fromString(userSid),
+				null,
+				null,
+				null);
+		of.setSecurityInformation(sd, EnumSet.of(SecurityInformation.OWNER_SECURITY_INFORMATION));
+		of.close();
 	}
 
 
@@ -838,4 +1004,5 @@ public class NASManager {
 		else
 			return new String[] {this.domain, this.user, this.password.getPassword()};
 	}
+
 }

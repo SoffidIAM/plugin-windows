@@ -2186,7 +2186,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							String user = (String) params.get("user");
 							String permission = (String) params.get("permission");
 							String flags = (String) params.get("flags");
-							nasManager.addAcl(command, user, permission, flags,  nasManager.parseAuthData(params));
+							nasManager.addAcl(command, user, permission, flags,  nasManager.parseAuthData(params), params.containsKey("recursive"));
 						} catch (Exception e) {
 							throw new InternalErrorException("Cannot add acl "+command, e);
 						}
@@ -2250,6 +2250,38 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							throw new InternalErrorException("Cannot remove "+command, e);
 						}
 						return new LinkedList();
+					}
+					else if ("smb:listShares".equalsIgnoreCase(verb))
+					{
+						Collection<Map<String,Object>> l2  = new LinkedList();
+						log.info("Listing shares "+command);
+						try {
+							for (String[] shareName: nasManager.listShares(command,  nasManager.parseAuthData(params))) {
+								Map<String,Object> m = new HashMap<>();
+								m.put("name", shareName[0]);
+								m.put("remarks", shareName[1]);
+								m.put("type", shareName[2]);
+								m.put("server", shareName[3]);
+								l2.add(m);
+							}
+						} catch (Exception e) {
+							throw new InternalErrorException("Cannot list shares for server "+command, e);
+						}
+						return l2;
+					}
+					else if ("smb:diskSpace".equalsIgnoreCase(verb))
+					{
+						Collection<Map<String,Object>> l2  = new LinkedList();
+						log.info("Calculating disk space "+command);
+						try {
+							Map<String,Object> m = new HashMap<>();
+							m.put("free", nasManager.getFreeSize(command,  nasManager.parseAuthData(params)));
+							m.put("size", nasManager.getVolumeSize(command,  nasManager.parseAuthData(params)));
+							l2.add(m);
+						} catch (Exception e) {
+							throw new InternalErrorException("Cannot get disk space for share "+command, e);
+						}
+						return l2;
 					}
 					else if (verb.equals("checkPassword"))
 					{
