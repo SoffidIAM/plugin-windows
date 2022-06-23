@@ -20,12 +20,14 @@ import com.hierynomus.msdtyp.SecurityInformation;
 import com.hierynomus.msdtyp.ace.ACE;
 import com.hierynomus.msdtyp.ace.AceFlags;
 import com.hierynomus.msdtyp.ace.AceTypes;
+import com.hierynomus.mserref.NtStatus;
 import com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation;
 import com.hierynomus.msfscc.fileinformation.ShareInfo;
 import com.hierynomus.mssmb2.SMB2CreateDisposition;
 import com.hierynomus.mssmb2.SMB2Dialect;
 import com.hierynomus.mssmb2.SMB2FileId;
 import com.hierynomus.mssmb2.SMB2ShareAccess;
+import com.hierynomus.mssmb2.SMBApiException;
 import com.hierynomus.protocol.commons.EnumWithValue.EnumUtils;
 import com.hierynomus.security.bc.BCSecurityProvider;
 import com.hierynomus.smbj.SMBClient;
@@ -240,6 +242,27 @@ public class NASManager {
 		} catch (IOException | SMBRuntimeException e) {
 			reconnect();
 			addAcl ( server, share, path, samAccountName, permission, flags, new PrintWriter(System.out), auth, recursive);
+		}
+	}
+
+	public void setAcl (String dir, List<String[]> acl, String[] auth) throws Exception
+	{ 
+		String[] uncSplit = splitPath (dir);
+		String server = uncSplit[0];
+		String share = uncSplit[1];
+		String path = uncSplit[2];
+
+		try {
+			connect();
+			
+			try {
+				setAcl ( server, share, path, acl, new PrintWriter(System.out), auth, false);
+			} catch (SMBApiException e0) {
+				setAcl ( server, share, path, acl, new PrintWriter(System.out), auth, true);
+			}
+		} catch (IOException | SMBRuntimeException e) {
+			reconnect();
+			setAcl ( server, share, path, acl, new PrintWriter(System.out), auth, false);
 		}
 	}
 
@@ -573,6 +596,47 @@ public class NASManager {
 		}
 	}
 
+	 
+	public void setAcl(String server, String shareName, String path,
+			List<String[]> acl,
+			PrintWriter out, String[] auth, boolean force) throws IOException, InternalErrorException {
+		try (final Connection smbConnection = smbClient.connect(server)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+		    	DiskEntry of = null;
+				if ( share.folderExists(path))
+				{
+					if (force) {
+						setDirectoryOwner(share, path, auth[1], out);
+						of = share.openDirectory(path, EnumSet.of(AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+								null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+						addAcl(of, path, auth[1], "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE");
+						of.close();
+					}
+					of = share.openDirectory(path, EnumSet.of(AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+								null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+					setAcl(of, path, acl);
+					of.close();
+				}
+				if ( share.fileExists(path))
+				{
+					if (force) {
+						setFileOwner(path, share, auth[1], out);
+						of = share.openDirectory(path, EnumSet.of(AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+								null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+						addAcl(of, path, auth[1], "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE");
+						of.close();
+					}
+					of = share.openFile(path, EnumSet.of(AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
+								null,  s, SMB2CreateDisposition.FILE_OPEN, null);
+					setAcl(of, path, acl);
+					of.close();
+				}
+			}
+		}
+	}
+
 	public void addAclRecursively(String path, String samAccountName, String permission, String flags, DiskShare share, boolean recursive)
 			throws IOException, InternalErrorException {
 		DiskEntry of;
@@ -617,6 +681,37 @@ public class NASManager {
 		sd.getDacl().getAces().add(0, ace);
 		
 		normalizeAces(sd.getDacl().getAces());
+		
+		sd.getControl().clear();
+		sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));
+		of.setSecurityInformation(sd);
+	}
+	
+
+	public void setAcl(DiskEntry of, String path, List<String[]> acl)
+			throws IOException, InternalErrorException {
+		if (of == null)
+			throw new IOException ("File "+path+" does not exist");
+		
+		SecurityDescriptor sd = of.getSecurityInformation( EnumSet.of( SecurityInformation.DACL_SECURITY_INFORMATION) );
+
+		sd.getDacl().getAces().clear();
+
+		for (String[] entry: acl) {
+			String userSid = getSid(entry[0]);
+			if (userSid == null)
+				throw new InternalErrorException ("Unable to find "+entry[0]+"'s SID");
+			
+			Set<AceFlags> inheritFlags = (Set<AceFlags>) stringToEnum(entry[2], AceFlags.class);
+			Set<AccessMask> accessMasks = (Set<AccessMask>) stringToEnum(entry[1], AccessMask.class);
+			ACE ace = AceTypes.accessAllowedAce( inheritFlags,
+					accessMasks , 
+					com.hierynomus.msdtyp.SID.fromString(userSid));
+			sd.getDacl().getAces().add(ace);
+		}
+		
+		normalizeAces(sd.getDacl().getAces());
+		
 		
 		sd.getControl().clear();
 		sd.getControl().addAll(EnumSet.of(Control.DP, Control.SR, Control.PD));

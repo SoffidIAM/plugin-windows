@@ -32,6 +32,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
 
@@ -88,9 +89,12 @@ import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
 import com.soffid.iam.api.AccountStatus;
 import com.soffid.iam.api.Group;
 import com.soffid.iam.api.PasswordValidation;
+import com.soffid.iam.api.Role;
+import com.soffid.iam.api.RoleGrant;
 import com.soffid.iam.config.Config;
 import com.soffid.iam.remote.RemoteServiceLocator;
 import com.soffid.iam.service.AccountService;
+import com.soffid.iam.service.ApplicationService;
 import com.soffid.iam.sync.engine.kerberos.ChainConfiguration;
 import com.soffid.iam.sync.engine.kerberos.KerberosManager;
 import com.soffid.iam.sync.intf.AccessLogMgr;
@@ -838,8 +842,24 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				} catch (LDAPException e) {
 					if (e.getResultCode() == LDAPException.UNWILLING_TO_PERFORM
 							&& !repeat) {
-						updateObject(accountName, accountName, object, sourceObject, null /*always apply*/, enabled);
-						repeat = true;
+						if (e.getLDAPErrorMessage().startsWith("00002035:")) {
+							try {
+								performPasswordChange(ldapUser, accountName,
+										password, mustchange, delegation, true,
+										enabled);
+							} catch (Exception e2) {
+								String msg = "UpdateUserPassword('" + accountName
+										+ "')";
+								log.warn(msg + "(First attempt)", e);
+								log.warn(msg + "(Second attempt)", e2);
+								throw new InternalErrorException(msg
+										+ e2.getMessage(), e2);
+							}
+						}
+						else {
+							updateObject(accountName, accountName, object, sourceObject, null /*always apply*/, enabled);
+							repeat = true;
+						}
 					} else if (e.getResultCode() == LDAPException.ATTRIBUTE_OR_VALUE_EXISTS) {
 						try {
 							performPasswordChange(ldapUser, accountName,
@@ -3634,13 +3654,18 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public void updateRole(Rol rol) throws RemoteException,
 			InternalErrorException {
 		if (rol.getBaseDeDades().equals(getDispatcher().getCodi())) {
-			RoleExtensibleObject sourceObject = new RoleExtensibleObject(rol,
-					getServer());
-			ExtensibleObjects objects = objectTranslator
-					.generateObjects(sourceObject);
 			Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 			try {
-				updateObjects(rol.getNom(), rol.getNom(), objects, sourceObject, null /*always apply*/, true);
+				if (rol.getNom().startsWith("\\\\") || rol.getNom().startsWith("//")) {
+					setAcl(rol);
+
+				} else {
+					RoleExtensibleObject sourceObject = new RoleExtensibleObject(rol,
+							getServer());
+					ExtensibleObjects objects = objectTranslator
+							.generateObjects(sourceObject);
+						updateObjects(rol.getNom(), rol.getNom(), objects, sourceObject, null /*always apply*/, true);
+				}
 			} catch (InternalErrorException e) {
 				throw e;
 			} catch (Exception e) {
@@ -3648,9 +3673,56 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			} finally {
 				Watchdog.instance().dontDisturb();
 			}
-
 		}
 	}
+
+	private void setAcl(Rol rol) throws Exception {
+		final String[] authData = nasManager.parseAuthData(new HashMap<String, Object>());
+		List<String[]> newAcls = fetchNewAcl(rol);	
+		
+		nasManager.setAcl(rol.getNom(), newAcls, authData);
+	}
+
+
+	private List<String[]> fetchNewAcl(Rol rol) throws InternalErrorException, IOException {
+		Map<String, String> r = new HashMap<>();
+		for (RolGrant grant: rol.getOwnerRoles()) 
+		{
+			if (getCodi().equals(grant.getOwnerDispatcher())) {
+				String name = grant.getOwnerRolName();
+				String prev = r.get(name);
+				if (prev == null)
+					r.put(name, grant.getDomainValue());
+				else
+					r.put(name, prev+" "+grant.getDomainValue());
+			}
+		}
+		
+		final ApplicationService applicationService = new RemoteServiceLocator().getApplicationService();
+		for (RoleGrant grant: applicationService.findEffectiveRoleGrantsByRoleId(rol.getId())) {
+			boolean skipGrant = false;
+			if (grant.getOwnerRole() != null) {
+				Role role2 = applicationService.findRoleById(grant.getOwnerRole());
+				if (role2.getSystem().equals(rol.getBaseDeDades()))
+					skipGrant = true;
+			}
+			if (!skipGrant) {
+				String name = grant.getOwnerAccountName();
+				String prev = r.get(name);
+				if (prev == null)
+					r.put(name, grant.getDomainValue());
+				else
+					r.put(name, prev+" "+grant.getDomainValue());
+
+			}
+		}
+		List<String[]> result = new LinkedList<>();
+		for (Entry<String, String> entry: r.entrySet()) {
+			result.add(new String[] { entry.getKey(), entry.getValue(), "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE"});
+		}
+		return result ;
+	}
+
 
 	public void removeRole(String rolName, String dispatcher)
 			throws RemoteException, InternalErrorException {
