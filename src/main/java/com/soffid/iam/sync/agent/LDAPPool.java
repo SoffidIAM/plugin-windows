@@ -192,8 +192,9 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			return createConnection (host, useSsl, ldapPort);
 		} catch (Exception e) {
 			if (alwaysTrust && useSsl) {
-				log.warn("Error creating SSL connection to "+host, e);
-				return createConnection (host, false, LDAPConnection.DEFAULT_PORT);
+				LDAPConnection conn = createConnection (host, false, LDAPConnection.DEFAULT_PORT);
+				log.warn("Error creating SSL connection to "+host+". Switching to NON-SSL connection", e);
+				return conn;
 			}
 			else
 				throw e;

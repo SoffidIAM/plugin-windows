@@ -343,8 +343,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		followReferrals = "true".equals(getDispatcher().getParam9());
 		// followReferrals = false;
 		
-		log.debug("Started ActiveDirectoryAgent user=" + loginDN,
-				null, null);
 		try {
 			javaDisk = new bubu.util.javadisk();
 		} catch (Throwable e) {
@@ -354,7 +352,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 
 		try {
+			log.info(getCodi()+": Fetching main domain for "+baseDN);
+			mainDomain = baseDN;
 			mainDomain = reconfigurePool(ldapHost, baseDN);
+			log.info(getCodi()+": Main domain for "+baseDN+ " is "+mainDomain);
 		} catch (Exception e2) {
 			throw new InternalErrorException("Error querying domain short name", e2);
 		}
@@ -454,12 +455,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 
 	protected LDAPConnection getConnection(String domain) throws Exception {
+		log.info(getCodi() + ": Searching for pool "+domain);
 		LDAPPool pool = getPool(domain);
 		if (pool == null && domain != null) {
 			log.info("Finding pool for "+domain);
 			String domain2 = searchDomainForDN(domain);
-			log.info("Using pool "+domain2);
-			pool = getPool(domain2);
+			if (domain2 == null)
+				throw new InternalErrorException("Cannot resolve domain "+domain);
+			domain = domain2;
+			log.info("Using pool "+domain);
+			pool = getPool(domain);
 		}
 		if (pool == null) {
 			throw new InternalErrorException("Unknown LDAP pool "+domain);
@@ -531,14 +536,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				log.info("Searching for short domain name for "+dn);
 				
 				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
-				LDAPSearchResults query;
+				constraints.setReferralFollowing(false);
+				LDAPSearchResults query = null;
 				try {
 					query = conn.search("cn=configuration,"+dn,
 							LDAPConnection.SCOPE_SUB, "(nETBIOSName=*)", null, false,
 							constraints);
 				} catch (Exception e) {
-					log.info("Error connecting to "+conn.getHost()+":"+conn.getPort());
-					return mainDomain;
+					log.warn("Error connecting to "+conn.getHost()+":"+conn.getPort(), e);
 				}
 				shortName = dn.substring(dn.indexOf("dc=")+3);
 				if (shortName.contains(","))
@@ -546,27 +551,29 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				
 				if ( !multiDomain && samDomainName != null)
 					shortName = samDomainName;
-
-
-				while (query.hasMore()) {
-					try {
-						LDAPEntry entry = query.next();
-						String shortName2 = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
-						String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
-						String dnsName = entry.getAttribute("dnsRoot").getStringValue().toLowerCase();
-						if (ncn.equalsIgnoreCase(dn)) {
-							shortName = shortName2;
-							domainToShortName.put(ncn, shortName2);
-							shortNameToDomain.put(shortName2, ncn);
-							dnsNameToDomain.put(dnsName, ncn);
-							log.info("Legacy name for "+ncn+" = "+shortName.toUpperCase());
+				
+				if (query != null) {
+	
+					while (query.hasMore()) {
+						try {
+							LDAPEntry entry = query.next();
+							String shortName2 = entry.getAttribute("nETBIOSName").getStringValue().toLowerCase();
+							String ncn = entry.getAttribute("nCName").getStringValue().toLowerCase();
+							String dnsName = entry.getAttribute("dnsRoot").getStringValue().toLowerCase();
+							if (ncn.equalsIgnoreCase(dn)) {
+								shortName = shortName2;
+								domainToShortName.put(ncn, shortName2);
+								shortNameToDomain.put(shortName2, ncn);
+								dnsNameToDomain.put(dnsName, ncn);
+								log.info("Legacy name for "+ncn+" = "+shortName.toUpperCase());
+							}
+						} catch (LDAPReferralException e)
+						{
+							// Ignore
+						} catch (LDAPException e)
+						{
+							log.info("Error getting short domain name "+e.toString());
 						}
-					} catch (LDAPReferralException e)
-					{
-						// Ignore
-					} catch (LDAPException e)
-					{
-						log.info("Error getting short domain name "+e.toString());
 					}
 				}
 				shortName = shortName.trim().toLowerCase();
@@ -4159,7 +4166,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						{
 							debugObject("Soffid object", object, "  ");
 						}
-						parseUser(changes, object);
+						parseUser(changes, object, ldapObject);
 						parseGroup(changes, object);
 						parseCustomObject(changes, object);
 					}
@@ -4178,18 +4185,25 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 
-	private void parseUser(Collection<AuthoritativeChange> changes, ExtensibleObject object)
+	private void parseUser(Collection<AuthoritativeChange> changes, ExtensibleObject object, ExtensibleObject ldapObject)
 			throws InternalErrorException {
-		AuthoritativeChange change = parseUserChange(object);
+		AuthoritativeChange change = parseUserChange(object, ldapObject);
 		if (change != null)
 			changes.add(change);
 	}
 
 
-	public AuthoritativeChange parseUserChange(ExtensibleObject object) throws InternalErrorException {
+	public AuthoritativeChange parseUserChange(ExtensibleObject object, ExtensibleObject ldapObject) throws InternalErrorException {
 		AuthoritativeChange change = null;
 		Usuari user = vom.parseUsuari(object);
 		if (user != null) {
+			
+			if ( user.getActiu() == null) {
+				Object uac = ldapObject.get("userAccountControl");
+				if (uac != null) {
+					user.setActiu( ( Long.parseLong(uac.toString()) & 2 )== 0 );
+				}
+			}
 			change = new AuthoritativeChange();
 			change.setSourceSystem(getCodi());
 
