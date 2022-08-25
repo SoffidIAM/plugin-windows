@@ -150,26 +150,6 @@
 		<maven.compile.source>7</maven.compile.source>
 		<maven.compile.target>7</maven.compile.target>
 	</properties>
-	<pluginRepositories>
-		<pluginRepository>
-			<id>soffid-open</id>
-			<url>http://www.soffid.com/maven</url>
-		</pluginRepository>
-	</pluginRepositories>
-	<repositories>
-		<repository>
-			<id>central</id>
-			<url>http://repo1.maven.org/maven2</url>
-		</repository>
-		<repository>
-			<id>soffid-open</id>
-			<url>http://www.soffid.com/maven</url>
-		</repository>
-		<repository>
-			<id>jboss</id>
-			<url>https://repository.jboss.org/nexus/content/repositories/releases</url>
-		</repository>
-	</repositories>
 	<dependencyManagement>
 		<dependencies>
 			<dependency>
