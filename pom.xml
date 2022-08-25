@@ -170,6 +170,35 @@
 			<url>https://repository.jboss.org/nexus/content/repositories/releases</url>
 		</repository>
 	</repositories>
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>com.hierynomus</groupId>
+				<artifactId>smbj</artifactId>
+				<version>0.9.1-soffid-2</version>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+	<pluginRepositories>
+		<pluginRepository>
+			<id>soffid-open</id>
+			<url>https://download.soffid.com/maven</url>
+		</pluginRepository>
+	</pluginRepositories>
+	<repositories>
+		<repository>
+			<id>central</id>
+			<url>https://repo1.maven.org/maven2</url>
+		</repository>
+		<repository>
+			<id>soffid-open</id>
+			<url>https://download.soffid.com/maven</url>
+		</repository>
+		<repository>
+			<id>soffid</id>
+			<url>https://archiva.internal.soffid.com/repository/soffid</url>
+		</repository>
+	</repositories>
 	<distributionManagement>
 		<repository>
 			<uniqueVersion>true</uniqueVersion>
@@ -183,13 +212,4 @@
 			<url>${soffid.deploy.site.url}</url>
 		</site>
 	</distributionManagement>
-	<dependencyManagement>
-		<dependencies>
-			<dependency>
-				<groupId>com.hierynomus</groupId>
-				<artifactId>smbj</artifactId>
-				<version>0.9.1-soffid-2</version>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
 </project>
