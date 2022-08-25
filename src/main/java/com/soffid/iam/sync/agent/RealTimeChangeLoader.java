@@ -159,7 +159,7 @@ public class RealTimeChangeLoader implements Runnable {
 					AuthoritativeChange change = null;
 					
 					if (isUser(entry))
-						change = agent.parseUserChange(object);
+						change = agent.parseUserChange(object, ldapObject);
 					if (change == null)
 						change = agent.parseGroupChange(object);
 					if (change == null)
