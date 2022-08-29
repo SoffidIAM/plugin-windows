@@ -551,6 +551,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						// Ignore
 					} catch (LDAPException e)
 					{
+						handleException(e, conn);
 						log.info("Error getting short domain name "+e.toString());
 					}
 				}
@@ -565,6 +566,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			domainHost.put(dn, host);
 			log.info("Registered domain "+shortName+" for "+dn+" (server "+host+")");
 			return dn;
+		} catch (Exception e) {
+			handleException(e, conn);
+			throw e;
 		} finally {
 			pool.returnConnection();
 		}
@@ -572,7 +576,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
     private void createChildPools(LDAPPool pool2) throws InternalErrorException {
-		LDAPConnection conn;
+		LDAPConnection conn = null;
 		LinkedList<LDAPPool> children = new LinkedList<LDAPPool>();
 		try {
 			log.info("Resolving domain controllers for "+pool2.getLdapHost());
@@ -602,6 +606,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		} catch (UnknownHostException e) {
 			log.warn("Error resolving host "+pool2.getLdapHost(), e);
 		} catch (LDAPException e1) {
+			handleException(e1, conn);
 			log.warn("Error querying domain controllers ", e1);
 		} catch (Exception e2) {
 			throw new InternalErrorException("Error querying domain controllers", e2);
@@ -632,7 +637,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		try {
 			if (e instanceof LDAPException &&
 					conn != null && 
-					((LDAPException) e).getResultCode() == LDAPException.CONNECT_ERROR)
+					((LDAPException) e).getResultCode() == LDAPException.CONNECT_ERROR )
 			{
 				log.warn("Closing failed connection "+conn.toString());
 				conn.disconnect();
@@ -754,6 +759,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 			} catch (LDAPException e)
 			{
+				handleException(e, conn);
 				log.info("Error getting short domain name "+e.toString());
 			}
 		}			
@@ -2205,6 +2211,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					}
 				}			
 				return result;
+			} catch (Exception e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -2238,6 +2247,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 				catch (LDAPException e2)
 				{
+					handleException(e2, conn);
 					if (e2.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
 						// Ignore
 					} else {
@@ -2275,6 +2285,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				}
 				catch (LDAPException e2)
 				{
+					handleException(e2, conn);
 					if (e2.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
 						// Ignore
 					} else {
@@ -2301,6 +2312,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			{
 				conn.delete(dn);
 				return null;
+			} catch (Exception e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -2369,6 +2383,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						mods.toArray(new LDAPModification[0]));
 				conn.modify(dn, mods.toArray(new LDAPModification[0]));
 				return null;
+			} catch (Exception e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -2406,6 +2423,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					debugEntry("Creating object", dn, attributes);
 				conn.add( new LDAPEntry(dn, attributes));
 				return null;
+			} catch (Exception e) {
+				handleException(e, conn);
+				throw e;
 			} finally {
 				returnConnection(domain);
 			}
@@ -2505,6 +2525,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 										accounts.add(generateAccountName(entry, mapping, "accountName"));
 									} catch (LDAPReferralException e) {
 									} catch (LDAPException e) {
+										handleException(e, conn);
 										if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
 											// Ignore
 										} else {
