@@ -30,6 +30,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.Stack;
 
@@ -303,6 +304,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		excludeDomains = getDispatcher().getParam6();
 		debugEnabled = "true".equals(getDispatcher().getParam7());
 		trustEverything = "true".equals(getDispatcher().getParam8());
+		if ("plain".equals(getDispatcher().getParam8())) {
+			useSsl = false;
+			ldapPort = LDAPConnection.DEFAULT_PORT;
+		}
 		extendedAttributes = new HashMap<String,String>();
 		if (loginDN.contains("\\")) {
 			samDomainName = loginDN.substring(0, loginDN.indexOf("\\"));
@@ -526,7 +531,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							constraints);
 				} catch (Exception e) {
 					log.info("Error connecting to "+conn.getHost()+":"+conn.getPort());
-					return mainDomain;
+					if (mainDomain != null)
+						return mainDomain;
+					else
+						throw e;
 				}
 				shortName = dn.substring(dn.indexOf("dc=")+3);
 				if (shortName.contains(","))
@@ -661,7 +669,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				excludeDomains.trim().toLowerCase().split(" +");
 		Arrays.sort(excluded);
 		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
-		constraints.setReferralFollowing(true);
+		constraints.setReferralFollowing(false);
 		
 		LDAPSearchResults query = conn.search(base,
 					LDAPConnection.SCOPE_SUB, queryString, null, false,
@@ -673,10 +681,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				log.info("Got entry "+entry.getDN());
 			} catch (LDAPReferralException e)
 			{
-				log.info("Referral error "+e.toString());
 				for (String r: e.getReferrals())
 				{
 					try {
+						log.info("Got referral "+r);
 						LDAPUrl url = new LDAPUrl(r);
 						String server = url.getHost().toLowerCase();
 						String lastPart = server.contains(".") ? server.substring(0, server.indexOf(".")) : server;
@@ -2879,7 +2887,29 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 									rol.setDescripcio(entry.getAttribute("CN")
 											.getStringValue());
 								rol.setNom(roleName);
-
+								
+								List<RolGrant> l = new LinkedList<>();
+								LDAPAttribute memberofattr = entry.getAttribute("memberOf");
+								String soffidGroups[] = ((memberofattr == null) ? new String[] {}
+										: memberofattr.getStringValueArray());
+								for (int i = 0; i < soffidGroups.length; i++) {
+									LDAPEntry groupEntry;
+									try {
+										groupEntry = searchEntry(soffidGroups[i]);
+									} catch (Exception e) {
+										throw new InternalErrorException("Error fetching group "+soffidGroups[i], e);
+									}
+									String accountName = generateAccountName(groupEntry, null, "name"); 
+									RolGrant rg = new RolGrant();
+									rg.setDispatcher(getCodi());
+									rg.setOwnerRolName(roleName);
+									rg.setOwnerDispatcher(getCodi());
+									rg.setRolName(accountName);
+									l.add(rg);
+								}	
+								rol.setOwnerRoles(null);
+								rol.setOwnedRoles(l);
+								
 								rolesCache.put(entry.getDN().toLowerCase(), rol);
 								return rol;
 							}
@@ -2890,6 +2920,37 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 		return null;
 	}
+
+	Boolean compatibleSyncserver = null;
+	private boolean useNestedGroups() {
+		try {
+			boolean flat = ! "false".equals(extendedAttributes.get("flatGroups"));
+
+			if (flat) return false;
+			
+			if (compatibleSyncserver == null) {
+				Properties props = new Properties();
+				props.load(getClass().getResourceAsStream("/META-INF/maven/com.soffid.iam.sync/syncserver/pom.properties"));
+				String version = props.getProperty("version");
+				String[] split = version.split("[.-]");
+				int number = Integer.parseInt(split[0]);
+				if (number > 3) return (compatibleSyncserver = Boolean.TRUE).booleanValue();
+				if (number < 3) return (compatibleSyncserver = Boolean.FALSE).booleanValue();
+				number = Integer.parseInt(split[1]);
+				if (number > 3) return (compatibleSyncserver = Boolean.TRUE).booleanValue();
+				if (number < 3) return (compatibleSyncserver = Boolean.FALSE).booleanValue();
+				number = Integer.parseInt(split[2]);
+				if (number >= 28) return (compatibleSyncserver = Boolean.TRUE).booleanValue();
+				return (compatibleSyncserver = Boolean.FALSE).booleanValue();
+			}
+			else
+				return compatibleSyncserver.booleanValue();
+		} catch (Exception e) {
+			return false;
+		}
+		
+	}
+
 
 	public List<Rol> getAccountRoles(String userAccount)
 			throws RemoteException, InternalErrorException {
@@ -3143,8 +3204,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		if (enabled)
 		{
 			for (RolGrant grant : getServer().getAccountRoles(userName, dispatcher)) {
-				if (!groups.contains(grant.getRolName()))
-					groups.add(grant.getRolName());
+				if (!groups.contains(grant.getRolName())) {
+					if (!useNestedGroups() || grant.getOwnerRol() == null || !grant.getOwnerDispatcher().equals(getCodi()))
+						groups.add(grant.getRolName());
+				}
 			}
 			for (Grup grup : getServer().getUserGroups(userName, dispatcher)) {
 				if (!groups.contains(grup.getCodi()))
@@ -3195,6 +3258,107 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				else
 				{
 					removeGroupMember(entry.getValue(), userName, userEntry);
+				}
+			} catch (Exception e) {
+				lastException = e;
+				log.warn("Error removing group membership", e);
+			} finally {
+				if (isDebug())
+					log.info("END");
+			}
+		}
+		if (isDebug())
+			log.info("END");
+		if (lastException != null)
+			throw lastException;
+	}
+
+	private void updateRoleGroups(Rol role, ExtensibleObject object, boolean enabled, List<String[]> changes)
+			throws Exception {
+		// Aquí llegamos en usuarios nuevos y existentes ACTIVOS
+		// Gestionamos la membresía del usuario a roles y grupos
+		// en el atributo memberOf del usuario lo tenemos
+		if (isDebug())
+			log.info("BEGIN Setting group membership");
+		String roleName = role.getNom();
+		LDAPEntry userEntry = searchSamAccount(object, roleName);
+		if (userEntry == null) {
+			if (isDebug())
+				log.info("END");
+			return;
+		}
+		
+		LDAPAttribute memberofattr = userEntry.getAttribute("memberOf");
+		String dispatcher = getCodi();
+		String soffidGroups[] = ((memberofattr == null) ? new String[] {}
+				: memberofattr.getStringValueArray());
+		HashMap<String, String> h_soffidGroups = new HashMap<String, String>(); // Soffid
+																				// groups
+
+		for (int i = 0; i < soffidGroups.length; i++) {
+			LDAPEntry groupEntry = searchEntry(soffidGroups[i]);
+			String accountName = generateAccountName(groupEntry, null, "name"); 
+			h_soffidGroups.put(accountName, groupEntry.getDN());
+		}
+
+		// roles seycon: rolesUsuario - grupos seycon: grupsUsuari
+		// Get roles and groups of users
+		HashSet<String> groups = new HashSet<String>();
+
+		Exception lastException = null;
+		if (enabled)
+		{
+			Rol ri = getServer().getRoleInfo(roleName, getCodi());
+			for (RolGrant grant : ri.getOwnedRoles()) {
+				if (!groups.contains(grant.getRolName())) {
+					groups.add(grant.getRolName());
+				}
+			}
+			for (Iterator<String> it = groups.iterator(); it.hasNext();) {
+				String groupCode = it.next();
+				if (!h_soffidGroups.containsKey(groupCode.toLowerCase()))
+				{
+					if (isDebug())
+						log.info("BEGIN Adding {} to [{}]", roleName, groupCode);
+					try {
+						if (changes != null)
+						{
+							changes.add(new String[] {"Grant group", groupCode});
+						}
+						else
+						{
+							addGroupMember(groupCode, roleName, userEntry);							
+						}
+					} catch (Exception e) {
+						lastException = e;
+						log.warn("Error adding group membership", e);
+					} finally {
+						if (isDebug())
+							log.info("END");
+					}
+				}
+				else {
+					if (isDebug())
+						log.info("Keeping membership to {}", groupCode, null);
+					h_soffidGroups.remove(groupCode.toLowerCase());
+				}
+			}
+		}
+
+		// Esborram dels grups excedents
+		for (Iterator it = h_soffidGroups.entrySet().iterator(); it.hasNext();) {
+			Map.Entry<String, String> entry = (Map.Entry<String, String>) it
+					.next();
+			if (isDebug())
+				log.info("BEGIN Removing {} from {}", roleName, entry.getValue());
+			try {
+				if (changes != null)
+				{
+					changes.add(new String[] {"Revoke group", entry.getValue()});
+				}
+				else
+				{
+					removeGroupMember(entry.getValue(), roleName, userEntry);
 				}
 			} catch (Exception e) {
 				lastException = e;
@@ -3514,6 +3678,21 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			Watchdog.instance().interruptMe(getDispatcher().getTimeout());
 			try {
 				updateObjects(rol.getNom(), rol.getNom(), objects, sourceObject, null /*always apply*/, true);
+				if (useNestedGroups()) {
+					if (isDebug())
+						log.info("BEGIN Updating role members");
+					try {
+						for (ExtensibleObject object : objects.getObjects()) {
+							if ("group".equalsIgnoreCase((String) object.getAttribute("objectClass"))) {
+								updateRoleGroups(rol, object, true, null);
+							}
+						}
+					} finally {
+						if (isDebug())
+							log.info("END");
+						
+					}
+				}
 			} catch (InternalErrorException e) {
 				throw e;
 			} catch (Exception e) {
@@ -4057,6 +4236,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		if (group != null) {
 			change = new AuthoritativeChange();
 
+			change.setSourceSystem(getCodi());
 			AuthoritativeChangeIdentifier id = new AuthoritativeChangeIdentifier();
 			change.setId(id);
 			id.setChangeId(null);
@@ -4753,6 +4933,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		try {
 			String roleName = role.getNom();
 			updateObjects(roleName, roleName, objects, sourceObject, changes, true );
+			if (useNestedGroups()) {
+				for (ExtensibleObject object : objects.getObjects()) {
+					if ("group".equalsIgnoreCase((String) object.getAttribute("objectClass"))) {
+						updateRoleGroups(role, object, true, changes);
+					}
+				}
+			}
 		} catch (LDAPException e) {
 			throw new InternalErrorException(e.getMessage());
 		} catch (UnknownUserException e) {

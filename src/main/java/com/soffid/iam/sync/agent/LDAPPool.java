@@ -30,6 +30,7 @@ import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
+import com.novell.ldap.LDAPReferralHandler;
 import com.novell.ldap.LDAPSocketFactory;
 import com.soffid.iam.sync.engine.pool.PoolElement;
 
@@ -271,10 +272,14 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			if (queryTimeout != null)
 				constraints.setTimeLimit(queryTimeout.intValue());
 			conn.setConstraints(constraints);
+			if (isDebug())
+				log.info("Connecting to "+host+":"+port);
 			conn.connect(host, port);
 			conn.bind(ldapVersion, loginDN, password.getPassword()
 					.getBytes("UTF8"));
 			conn.setConstraints(constraints);
+			if (isDebug())
+				log.info("Connected to "+host+":"+port);
 		}
 		catch (UnsupportedEncodingException e)
 		{
