@@ -4,21 +4,17 @@ import java.io.IOException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPConstraints;
 import com.novell.ldap.LDAPControl;
 import com.novell.ldap.LDAPEntry;
-import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPReferralException;
 import com.novell.ldap.LDAPSearchConstraints;
 import com.novell.ldap.LDAPSearchResults;
 import com.novell.ldap.controls.LDAPPagedResultsControl;
 import com.novell.ldap.controls.LDAPPagedResultsResponse;
-import com.soffid.iam.api.SoffidObjectType;
 import com.soffid.iam.remote.RemoteServiceLocator;
 
 import es.caib.seycon.ng.comu.Dispatcher;
@@ -163,7 +159,7 @@ public class RealTimeChangeLoader implements Runnable {
 					AuthoritativeChange change = null;
 					
 					if (isUser(entry))
-						change = agent.parseUserChange(object);
+						change = agent.parseUserChange(object, ldapObject);
 					if (change == null)
 						change = agent.parseGroupChange(object);
 					if (change == null)
@@ -185,6 +181,7 @@ public class RealTimeChangeLoader implements Runnable {
 						}
 						if ( ! ignore)
 						{
+							change.setSourceSystem(agentName);
 							boolean remove = entry.getAttribute("isDeleted") != null && 
 									"TRUE".equals(entry.getAttribute("isDeleted").getStringValue());
 							new es.caib.seycon.ng.remote.RemoteServiceLocator().getServerService().processAuthoritativeChange(change, remove);

@@ -46,6 +46,8 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import com.soffid.iam.api.AccountStatus;
+import com.soffid.iam.api.HostService;
+import com.soffid.iam.sync.nas.NASManager;
 
 import es.caib.seycon.*;
 import es.caib.seycon.agent.WindowsNTAgent;
@@ -95,6 +97,10 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 
 	private String[] environment;
 
+	protected String userName;
+
+	protected Password password;
+
 	/**
 	 * Constructor
 	 */
@@ -118,15 +124,15 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 				|| getDispatcher().getParam1().trim().length() == 0)
 			throw new InternalErrorException("server name is empty");
 
-		String user = getDispatcher().getParam1();
-		Password p = Password.decode(getDispatcher().getParam2());
+		userName = getDispatcher().getParam1();
+		password = Password.decode(getDispatcher().getParam2());
 
 		if (isWindows)
-			suffix = " --user \"" + user + "\" --password \"" + p.getPassword()
+			suffix = " --user \"" + userName + "\" --password \"" + password.getPassword()
 					+ "\" -S \"" + serverName + "\"";
 		else
 		{
-			suffix = "-U"+ user + "%" + p.getPassword();
+			suffix = "-U"+ userName + "%" + password.getPassword();
 			suffix2 = "-S"+ serverName ;
 		}
 
@@ -1024,6 +1030,10 @@ public class RemoteWindowsAgent extends Agent implements UserMgr,
 			throw new InternalErrorException(
 					"Timeout when looking for accounts", e);
 		}
+	}
+
+	public List getHostServices() throws RemoteException, InternalErrorException {
+		return new LinkedList();
 	}
 
 }

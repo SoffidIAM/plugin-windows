@@ -32,7 +32,6 @@
 						java.net.URLEncoder.encode( v, "UTF-8");
 				}
 			}
-			
 			es.caib.zkib.datasource.XPathUtils.setValue(configurationGrid,"blobParam", t.getBytes("UTF-8"));
 		}
 		void loadBlob () {
@@ -67,11 +66,12 @@
 					}
 				}
 		    } catch (Exception e) {
+		    	e.printStackTrace();
 		    }
 		}
 	]]>
 	</zscript>
-	<grid width="99%" onCreate="loadBlob()" id="configurationGrid">
+	<grid width="99%" onCreate='loadBlob()' id="configurationGrid">
 		<columns visible="false"><column width="14%"/><column/> </columns>
 		<rows>
 			<row>

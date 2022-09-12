@@ -17,9 +17,9 @@ public class NASManagerTest {
 			NASManager m;
 
 			m = new NASManager("AD", "ad.bubu.lab", "Administrator", new Password("Test70."));
-			m.createFolder("//ad.bubu.lab/c$/test-folder");
+			m.createFolder("//ad.bubu.lab/c$/test-folder", null);
 			
-			m.addAcl("//ad.bubu.lab/c$/test-folder", "ppig", "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE");
+			m.addAcl("//ad.bubu.lab/c$/test-folder", "ppig", "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE", null);
 
 		} else {
 			SmbConfig config = SmbConfig.builder()
@@ -41,7 +41,7 @@ public class NASManagerTest {
 	
  			m = new NASManager("win-uq9f24f4d4h", "10.129.120.13", "Administrador", new Password("Test70."));
 			
-			m.createFolder("//10.129.120.13/c$/test-folder4");
+			m.createFolder("//10.129.120.13/c$/test-folder4", null);
 			
 		}
 	}

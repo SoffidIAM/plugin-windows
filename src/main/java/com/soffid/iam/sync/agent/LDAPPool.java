@@ -21,7 +21,6 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
 import org.apache.commons.logging.LogFactory;
-import org.apache.xml.security.stax.ext.InboundSecurityContext;
 import org.slf4j.Logger;
 
 import com.novell.ldap.LDAPAuthHandler;
@@ -32,7 +31,6 @@ import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPJSSESecureSocketFactory;
 import com.novell.ldap.LDAPReferralHandler;
 import com.novell.ldap.LDAPSocketFactory;
-import com.soffid.iam.sync.engine.pool.PoolElement;
 
 import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.config.Config;
@@ -175,8 +173,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		Exception lastException = null;
 		for (String host: ldapHosts)
 		{
-//			log.info("============ Creating connection to "+host);
-//			diag(log);
 			try {
 				return createConnection(host);
 			} catch (Exception e) {
@@ -197,7 +193,9 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			return createConnection (host, useSsl, ldapPort);
 		} catch (Exception e) {
 			if (alwaysTrust && useSsl) {
-				return createConnection (host, false, LDAPConnection.DEFAULT_PORT);
+				LDAPConnection conn = createConnection (host, false, LDAPConnection.DEFAULT_PORT);
+				log.warn("Error creating SSL connection to "+host+". Switching to NON-SSL connection", e);
+				return conn;
 			}
 			else
 				throw e;
@@ -237,7 +235,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			else
 				ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
 			
-			conn = new LDAPConnection(ldapSecureSocketFactory);
+			conn = new SecureLDAPConnection(ldapSecureSocketFactory);
 		} else  {
 			conn = new LDAPConnection();
 			if (debug && false)
@@ -304,7 +302,6 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 
 	@Override
 	protected void closeConnection(LDAPConnection connection) throws LDAPException {
-		log.warn("Closing connection "+connection.getHost(), new Exception());
 		connection.disconnect();
 	}
 
@@ -349,6 +346,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 }
 
 class AlwaysTrustManager implements X509TrustManager {
+	private static String lock = new String();
     private KeyStore ks;
 	private File cacertsConf;
 
@@ -360,7 +358,13 @@ class AlwaysTrustManager implements X509TrustManager {
         cacertsConf = new File(configDir, "cacerts");
 
         ks = KeyStore.getInstance("JKS");
-        ks.load(new FileInputStream (cacertsConf), "changeit".toCharArray());
+        try {
+			synchronized (lock) {
+				final FileInputStream in = new FileInputStream (cacertsConf);
+				ks.load(in, null);
+				in.close();
+			}
+        } catch (Exception e) {}
 
 	}
 
@@ -386,11 +390,21 @@ class AlwaysTrustManager implements X509TrustManager {
 //			LogFactory.getLog(getClass()).info("Unknown cert "+arg0[0]);
 			MessageDigest d = MessageDigest.getInstance("SHA-1");
 			String entryName = Base64.encodeBytes( d.digest(arg0[0].getEncoded()), Base64.DONT_BREAK_LINES );
-			LogFactory.getLog(getClass()).info("Registering entry "+entryName);
 			if (ks.containsAlias(entryName))
-				ks.deleteEntry(entryName);
-			ks.setCertificateEntry(entryName, arg0[0]);
-		    ks.store( new FileOutputStream ( cacertsConf ), "changeit".toCharArray());
+			{
+				if (! arg0[0].equals(ks.getCertificate(entryName))) {
+					ks.deleteEntry(entryName);
+				}
+			}
+			if (! ks.containsAlias(entryName)) {
+				LogFactory.getLog(getClass()).info("Registering entry "+entryName);
+				ks.setCertificateEntry(entryName, arg0[0]);
+				synchronized (lock) {
+				    final FileOutputStream out = new FileOutputStream ( cacertsConf );
+					ks.store( out, "changeit".toCharArray());
+					out.close();
+				}
+			}
 		} catch (KeyStoreException e) {
 			throw new CertificateException ("Error validating certificate", e);
 		} catch (NoSuchAlgorithmException e) {
@@ -407,5 +421,6 @@ class AlwaysTrustManager implements X509TrustManager {
             throws CertificateException {
         throw new CertificateException("No allowed to use client certificates");
     }
+
 
 }
