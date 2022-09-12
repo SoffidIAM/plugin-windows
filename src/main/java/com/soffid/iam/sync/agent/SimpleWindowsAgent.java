@@ -25,18 +25,24 @@ import com.rapid7.client.dcerpc.mssamr.dto.UserAllInformation;
 import com.rapid7.client.dcerpc.mssamr.dto.UserHandle;
 import com.rapid7.client.dcerpc.transport.RPCTransport;
 import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
+import com.soffid.iam.ServiceLocator;
 import com.soffid.iam.api.Account;
 import com.soffid.iam.api.AccountStatus;
+import com.soffid.iam.api.DataType;
 import com.soffid.iam.api.Password;
 import com.soffid.iam.api.Role;
 import com.soffid.iam.api.RoleGrant;
 import com.soffid.iam.api.User;
+import com.soffid.iam.remote.RemoteServiceLocator;
+import com.soffid.iam.service.AdditionalDataService;
 import com.soffid.iam.sync.intf.ReconcileMgr2;
 import com.soffid.iam.sync.intf.UserMgr;
 import com.soffid.msrpc.samr.DispEntry;
 import com.soffid.msrpc.samr.SamrService;
 import com.soffid.msrpc.samr.UserInfo;
 
+import es.caib.seycon.ng.comu.TypeEnumeration;
+import es.caib.seycon.ng.config.Config;
 import es.caib.seycon.ng.exception.InternalErrorException;
 
 public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 {
@@ -76,6 +82,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 	public List<String> getAccountsList() throws RemoteException, InternalErrorException {
 		List<String> accounts = new LinkedList<>();
 		try {
+			updateAccountsMetadata();
 			Session session = getSession();
 			try {
 			    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
@@ -107,6 +114,32 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 			throw new InternalErrorException("Error getting accounts list", e);
 		} catch (IOException e) {
 			throw new InternalErrorException("Error getting accounts list", e);
+		}
+	}
+
+	private void updateAccountsMetadata() throws IOException, InternalErrorException {
+		
+		AdditionalDataService ds = ! Config.getConfig().isServer() ? 
+			new RemoteServiceLocator().getAdditionalDataService() :
+			ServiceLocator.instance().getAdditionalDataService();
+		checkMetadata("rid", TypeEnumeration.NUMBER_TYPE, "Internal id", ds);
+		checkMetadata("gid", TypeEnumeration.NUMBER_TYPE, "Group id", ds);
+		checkMetadata("home", TypeEnumeration.STRING_TYPE, "Home directory", ds);
+		checkMetadata("comments", TypeEnumeration.STRING_TYPE, "Comments", ds);
+	}
+
+	private void checkMetadata(String name, TypeEnumeration type, String description, AdditionalDataService ds) throws InternalErrorException {
+		if (ds.findSystemDataType(getAgentName(), name) == null) {
+			DataType dt = new DataType();
+			dt.setBuiltin(Boolean.FALSE);
+			dt.setLabel(description);
+			dt.setName(name);
+			dt.setType(type);
+			dt.setMultiValued(false);
+			dt.setRequired(false);
+			dt.setUnique(false);
+			dt.setOrder( 1L + ds.findSystemDataTypes(getAgentName()).size() );
+			ds.create(dt);
 		}
 	}
 
