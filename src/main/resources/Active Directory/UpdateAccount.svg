@@ -15,7 +15,7 @@
    viewBox="0 0 420 297"
    version="1.1"
    id="svg4574"
-   inkscape:version="0.92.3 (2405546, 2018-03-11)"
+   inkscape:version="0.92.5 (2060ec1f9f, 2020-04-08)"
    sodipodi:docname="UpdateAccount.svg">
   <defs
      id="defs4568">
@@ -624,16 +624,16 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="0.98994949"
-     inkscape:cx="770.30939"
-     inkscape:cy="577.87104"
+     inkscape:cx="598.58346"
+     inkscape:cy="574.33551"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
      showgrid="false"
      inkscape:snap-global="false"
      inkscape:window-width="1920"
-     inkscape:window-height="1016"
-     inkscape:window-x="0"
-     inkscape:window-y="27"
+     inkscape:window-height="1009"
+     inkscape:window-x="1920"
+     inkscape:window-y="34"
      inkscape:window-maximized="1" />
   <metadata
      id="metadata4571">
@@ -643,7 +643,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -1365,19 +1365,24 @@
        id="rect7463-7-7-8-5"
        width="41.603611"
        height="10.333078"
-       x="252.16382"
-       y="136.23763" />
+       x="252.43109"
+       y="136.77217" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-weight:normal;font-size:4.23333311px;line-height:1.25;font-family:sans-serif;text-align:center;letter-spacing:0px;word-spacing:0px;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
-       x="272.88864"
-       y="142.03255"
+       x="272.08682"
+       y="140.6962"
        id="text7467-5-3-7-9"><tspan
          sodipodi:role="line"
-         x="272.88864"
-         y="142.03255"
+         x="272.75964"
+         y="140.6962"
          style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
-         id="tspan10678-1-1-7">Add user to group</tspan></text>
+         id="tspan10678-1-1-7">Remove user </tspan><tspan
+         sodipodi:role="line"
+         x="272.08682"
+         y="145.98787"
+         style="text-align:center;text-anchor:middle;stroke-width:0.26458332"
+         id="tspan275">to group</tspan></text>
     <path
        style="fill:none;stroke:#000000;stroke-width:0.96499997;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#marker13021-9-4)"
        d="m 273.30541,146.81943 -0.20613,21.44526"
