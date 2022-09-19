@@ -12,7 +12,6 @@ import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
-import com.ibm.icu.util.BytesTrie.Iterator;
 import com.rapid7.client.dcerpc.RPCException;
 import com.rapid7.client.dcerpc.dto.SID;
 import com.rapid7.client.dcerpc.mserref.SystemErrorCode;
