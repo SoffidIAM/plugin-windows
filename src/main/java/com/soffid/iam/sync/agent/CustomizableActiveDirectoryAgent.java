@@ -4109,14 +4109,26 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							| ADS_UF_DONT_EXPIRE_PASSWD
 							| ADS_UF_TRUSTED_FOR_DELEGATION;
 
-					LDAPModification[] mods = new LDAPModification[] {
-							new LDAPModification(LDAPModification.REPLACE,
-									atributo)
-							 ,
-							new LDAPModification(LDAPModification.REPLACE,
-									new LDAPAttribute(USER_ACCOUNT_CONTROL,
-											Integer.toString(status))) 
-							};
+					LDAPModification[] mods;
+					
+					if (!lc.isTLS()){
+						updateSamPassword (domain, uid, result.getPassword(), false);
+						mods = new LDAPModification[] {
+								new LDAPModification(LDAPModification.REPLACE,
+										new LDAPAttribute(USER_ACCOUNT_CONTROL,
+												Integer.toString(status))) 
+								};
+					} else {
+						mods = new LDAPModification[] {
+								new LDAPModification(LDAPModification.REPLACE,
+										atributo)
+								 ,
+								new LDAPModification(LDAPModification.REPLACE,
+										new LDAPAttribute(USER_ACCOUNT_CONTROL,
+												Integer.toString(status))) 
+								};
+					}
+
 					debugModifications("Updating kerberos principal ", entry.getDN(),
 							mods);
 					lc.modify(entry.getDN(), mods);
