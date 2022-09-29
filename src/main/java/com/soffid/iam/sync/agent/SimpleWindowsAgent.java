@@ -82,6 +82,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 	public List<String> getAccountsList() throws RemoteException, InternalErrorException {
 		List<String> accounts = new LinkedList<>();
 		try {
+			log.info("Getting accounts list");
 			updateAccountsMetadata();
 			Session session = getSession();
 			try {
@@ -118,6 +119,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 	}
 
 	private void updateAccountsMetadata() throws IOException, InternalErrorException {
+		log.info("Checking metadata");
 		
 		AdditionalDataService ds = ! Config.getConfig().isServer() ? 
 			new RemoteServiceLocator().getAdditionalDataService() :
@@ -130,6 +132,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 
 	private void checkMetadata(String name, TypeEnumeration type, String description, AdditionalDataService ds) throws InternalErrorException {
 		if (ds.findSystemDataType(getAgentName(), name) == null) {
+			log.info("Creating metadata for "+name+" @ "+getAgentName());
 			DataType dt = new DataType();
 			dt.setBuiltin(Boolean.FALSE);
 			dt.setLabel(description);
@@ -138,6 +141,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 			dt.setMultiValued(false);
 			dt.setRequired(false);
 			dt.setUnique(false);
+			dt.setSystemName(getAgentName());
 			dt.setOrder( 1L + ds.findSystemDataTypes(getAgentName()).size() );
 			ds.create(dt);
 		}
