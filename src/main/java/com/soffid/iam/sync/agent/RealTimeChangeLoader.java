@@ -181,7 +181,7 @@ public class RealTimeChangeLoader implements Runnable {
 						}
 						if ( ! ignore)
 						{
-							change.setSourceSystem(agentName);
+							change.setSourceSystem(dispatcher.getCodi());
 							boolean remove = entry.getAttribute("isDeleted") != null && 
 									"TRUE".equals(entry.getAttribute("isDeleted").getStringValue());
 							new es.caib.seycon.ng.remote.RemoteServiceLocator().getServerService().processAuthoritativeChange(change, remove);
