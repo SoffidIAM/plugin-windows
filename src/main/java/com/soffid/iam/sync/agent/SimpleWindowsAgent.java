@@ -11,6 +11,7 @@ import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.mssmb2.SMBApiException;
 import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.auth.AuthenticationContext;
+import com.hierynomus.smbj.common.SMBRuntimeException;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
 import com.rapid7.client.dcerpc.RPCException;
@@ -677,18 +678,27 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 		}
 	}
 	
-	public Session getSession() throws IOException {
+	public Session getSession() throws IOException, InternalErrorException {
 		if (smbConnection != null && !smbConnection.isConnected()) {
 			smbConnection.close(true);
 			smbConnection = null;
 		}
 		if (smbConnection == null)
 			smbConnection = smbClient.connect(server);
-	    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
-	    		user, password.getPassword().toCharArray(), domain);
-	    log.info("Authenticating");
-	    final Session session = smbConnection.authenticate(smbAuthenticationContext);
-	    return session;
+		
+		try {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+		    		user, password.getPassword().toCharArray(), domain);
+		    log.info("Authenticating");
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+		    return session;
+		} catch (SMBRuntimeException e) {
+			Password p = getServer().getOrGenerateUserPassword(user, getAgentName());
+			if (p == null || p.getPassword().equals(password.getPassword()))
+				throw e;
+			password = p;
+			return getSession();
+		}
 
 	}
 
