@@ -37,6 +37,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
 
+import javax.naming.ldap.LdapName;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -1598,7 +1599,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				postUpdate(source, object, entry);
 			}
 
-			if (!entry.getDN().equalsIgnoreCase(dn)
+			LdapName n = new LdapName(dn.toLowerCase());
+			LdapName n2 = new LdapName(entry.getDN().toLowerCase());
+			if (!n.equals(n2)
 					&& !entry.getDN().contains(",CN=Builtin,")) {
 				if (isDebug())
 					log.info("BEGIN Distinguished Name change detected");
