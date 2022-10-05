@@ -131,9 +131,10 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 		checkMetadata("comments", TypeEnumeration.STRING_TYPE, "Comments", ds);
 	}
 
+	long minOrder = 1;
 	private void checkMetadata(String name, TypeEnumeration type, String description, AdditionalDataService ds) throws InternalErrorException {
 		if (ds.findSystemDataType(getAgentName(), name) == null) {
-			log.info("Creating metadata for "+name+" @ "+getAgentName());
+			log.info("Creating "+name+" on "+getAgentName());
 			DataType dt = new DataType();
 			dt.setBuiltin(Boolean.FALSE);
 			dt.setLabel(description);
@@ -143,7 +144,11 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 			dt.setRequired(false);
 			dt.setUnique(false);
 			dt.setSystemName(getAgentName());
-			dt.setOrder( 1L + ds.findSystemDataTypes(getAgentName()).size() );
+			for (DataType dt2: ds.findSystemDataTypes2(getAgentName())) {
+				if (dt2.getOrder().longValue() >= minOrder)
+					minOrder = dt2.getOrder().longValue()+1;
+			}
+			dt.setOrder( minOrder ++ );
 			ds.create(dt);
 		}
 	}
