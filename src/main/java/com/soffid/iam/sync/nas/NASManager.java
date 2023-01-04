@@ -653,7 +653,7 @@ public class NASManager {
 			}
 			of.close();
 		}
-		if ( share.fileExists(path))
+		else if ( share.fileExists(path))
 		{
 			of = share.openFile(path, EnumSet.of(AccessMask.GENERIC_ALL, AccessMask.READ_CONTROL,AccessMask.WRITE_DAC,AccessMask.WRITE_OWNER), 
 						null,  s, SMB2CreateDisposition.FILE_OPEN, null);

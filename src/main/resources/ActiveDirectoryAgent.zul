@@ -9,7 +9,8 @@
 		String[] attributes = new String[] {
 				"realTimeLastLogin",
 				"realTimeSource",
-				"flatGroups"
+				"flatGroups",
+				"undelete"
 		};
 		void updateBlob () {
 			String t = "";
@@ -174,6 +175,17 @@
 					</listitem>
 					<listitem value="false">
 						<listcell label="No"/>
+					</listitem>
+				</listbox>
+			</row>
+			<row>
+				<input_etiqueta value="Undelete deleted users" />
+				<listbox id="undelete"  disabled="{!canModifyAgent}" width="100px" mold="select" onSelect="updateBlob()">
+					<listitem value="false">
+						<listcell label="No"/>
+					</listitem>
+					<listitem value="true">
+						<listcell label="Yes"/>
 					</listitem>
 				</listbox>
 			</row>

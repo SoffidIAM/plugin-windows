@@ -289,7 +289,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 			if (conn != null)
 				conn.disconnect();
 			throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
-					+ loginDN + ")" + e.toString(), e);
+					+ loginDN + ")", e);
 		}
 		return (conn);
 	}

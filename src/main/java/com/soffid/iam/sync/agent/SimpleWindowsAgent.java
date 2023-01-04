@@ -122,6 +122,9 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 	private void updateAccountsMetadata() throws IOException, InternalErrorException {
 		log.info("Checking metadata");
 		
+		if (getSystem().getId().longValue() == 0)
+			return;
+		
 		AdditionalDataService ds = ! Config.getConfig().isServer() ? 
 			new RemoteServiceLocator().getAdditionalDataService() :
 			ServiceLocator.instance().getAdditionalDataService();

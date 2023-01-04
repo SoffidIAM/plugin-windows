@@ -11,7 +11,7 @@ import es.caib.seycon.ng.comu.Usuari;
 import es.caib.seycon.ng.exception.InternalErrorException;
 import es.caib.seycon.ng.sync.intf.ExtensibleObject;
 
-public class SSOActiveDirectoryAgent extends CustomizableActiveDirectoryAgent {
+public class SSOActiveDirectoryAgent extends CustomizableActiveDirectoryAgent_v2 {
 
 	public SSOActiveDirectoryAgent() throws RemoteException {
 		super();

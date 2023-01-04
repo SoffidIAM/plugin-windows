@@ -37,6 +37,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
 
+import javax.naming.InvalidNameException;
 import javax.naming.ldap.LdapName;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.SSLContext;
@@ -305,8 +306,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		ldapHost = getDispatcher().getParam0();
 		baseDN = getDispatcher().getParam1();
 
-		loginDN = loginDN.toLowerCase().contains(baseDN.toLowerCase()) || loginDN.contains("\\") ? loginDN 
-				: loginDN + ", " + baseDN;
+		loginDN = loginDN.toLowerCase();
+		try {
+			new LdapName(loginDN);
+			if (! loginDN.contains(baseDN.toLowerCase()))
+				loginDN = loginDN + ", " + baseDN;
+		} catch (InvalidNameException e) {}
 		
 		multiDomain = "true".equals(getDispatcher().getParam4());
 		createOUs = ! "false".equals(getDispatcher().getParam5());
@@ -412,13 +417,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	private void searchUserSamAccountName() throws Exception {
-		LDAPEntry entry;
-		if (loginDN.contains("\\"))
+		LDAPEntry entry = null;
+		if (loginDN.contains("\\") || !loginDN.contains("="))
 		{
 			ExtensibleObject eo = new ExtensibleObject();
 			eo.setObjectType(SoffidObjectType.OBJECT_ACCOUNT.getValue());
 			eo.setAttribute("objectClass", "user");
-			String s = multiDomain ? loginDN.toLowerCase() : loginDN.substring(loginDN.indexOf('\\')+1).toLowerCase();
+			String s = multiDomain || ! loginDN.contains("\\") ? 
+					loginDN.toLowerCase() : 
+					loginDN.substring(loginDN.indexOf('\\')+1).toLowerCase();
 			entry = searchSamAccount(eo, s);
 			if (entry == null)
 			{
@@ -438,6 +445,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			LDAPConnection conn = getConnection(domain);
 			try {
 				entry = conn.read(dn);
+			} catch (LDAPReferralException e) {
+				if (followReferrals)
+					throw e;
 			} catch (LDAPException e) {
 				throw new InternalErrorException("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server", e);
 			} finally {
@@ -543,6 +553,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				
 				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
 				constraints.setReferralFollowing(false);
+				constraints.setDereference(LDAPSearchConstraints.DEREF_NEVER);
 				LDAPSearchResults query = null;
 				try {
 					query = conn.search("cn=configuration,"+dn,
@@ -1076,6 +1087,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	protected LDAPEntry searchSamAccount(ExtensibleObject object,
 			String samAccount) throws Exception {
+		return searchSamAccount(object, samAccount, false);
+	}
+	
+	protected LDAPEntry searchSamAccount(ExtensibleObject object,
+			String samAccount, boolean deletedObjects) throws Exception {
 		String dn = vom.toSingleString(object
 				.getAttribute("dn"));
 		String objectClass = vom.toSingleString(object
@@ -1096,13 +1112,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		if (samAccount != null &&
 				objectClass != null)
 		{
-			LDAPEntry entry = findSamObject(objectClass, key, samAccount);
-//			if (entry == null && "user".equals(objectClass))
-//			{
-//				String upn = vom.toSingleString(object.getAttribute("userPrincipalName"));
-//				if (upn != null)
-//					entry = findUpnObject (objectClass, samAccount, upn);
-//			}
+			LDAPEntry entry = findSamObject(objectClass, key, samAccount, deletedObjects);
 			return entry;
 		}
 		
@@ -1136,6 +1146,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						LDAPEntry entry = query.next();
 						return entry;
 					} catch (LDAPReferralException e) {
+						if (followReferrals)
+							throw e;
 					}
 				}
 			} catch (LDAPException e) {
@@ -1162,6 +1174,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		LDAPConnection connection = getConnection(domain);
 		try {
 			return connection.read(dn);
+		} catch (LDAPReferralException e) {
+			if (followReferrals)
+				throw e;
+			else
+				return null;
 		} catch (LDAPException e) {
 			if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT )
 				return null;
@@ -1190,7 +1207,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		try {
 			return connection.read(dn, attributes);
 		} catch (LDAPReferralException e) {
-			return null;
+			if (followReferrals)
+				throw e;
+			else
+				return null;
 		} catch (LDAPException e) {
 			if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT)
 				return null;
@@ -1343,6 +1363,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			connection.read( dn );
 			found = true;
 		} catch (LDAPReferralException e) {
+			if (followReferrals)
+				throw e;
 		} catch (LDAPException e) {
 			if (e.getResultCode() != LDAPException.NO_SUCH_OBJECT) {
 				throw new InternalErrorException ("Error reading "+ dn,e);
@@ -1426,6 +1448,21 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					dn = getDN(object, accountName);
 					domain1 = domain = getAccountDomain(accountName, dn);
 					conn = getConnection(domain);
+				}
+			}
+			if (entry == null && "true".equals(extendedAttributes.get("undelete"))) { // Try to undelete it
+				entry = searchSamAccount(object, newAccountName, true);
+				if (entry != null) { //Undelete
+					log.info("Previously deleted object not found -> Undeleting it");
+					conn = getConnection(domain);
+					LDAPConstraints constraints = conn.getConstraints();
+					constraints.setControls( 
+							new LDAPControl [] {new LDAPControl ("1.2.840.113556.1.4.528", true, null)});
+					conn.modify(entry.getDN(), new LDAPModification[] {
+							new LDAPModification(LDAPModification.DELETE, new LDAPAttribute("isDeleted")),
+							new LDAPModification(LDAPModification.REPLACE, new LDAPAttribute("distinguishedName", dn)),
+					}, constraints);
+					entry = conn.read(dn);
 				}
 			}
 			if (entry == null) {
@@ -1847,7 +1884,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 									dns.add(entry.getDN());
 								}
 							} catch (LDAPReferralException ldapError) {
-								// Ignore
+								if (followReferrals)
+									throw ldapError;
 							}
 						}
 						Collections.sort(dns, new Comparator<String>() {
@@ -1911,6 +1949,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	private LDAPEntry findSamObject(String objectClass, String key, String value) throws Exception {
+		return findSamObject(objectClass, key, value, false);
+	}
+	
+	private LDAPEntry findSamObject(String objectClass, String key, String value, boolean deletedObjects) throws Exception {
 		LDAPEntry entry;
 		String queryString;
 		
@@ -1931,12 +1973,19 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 		queryString = "(&(objectClass=" + objectClass + ")("+key+"=" + escapeLDAPSearchFilter(samAccountName) + "))";
 
-		
 		LDAPConnection conn = getConnection(domain);
+
+		LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
+		if (deletedObjects) {
+			constraints.setControls( 
+					new LDAPControl [] {
+						new LDAPControl ("1.2.840.113556.1.4.417", true, null)
+					});
+		}
+		
 		try {
 			if (debugEnabled)
 				log.info("Searching for object "+queryString+" on domain "+domain+" ("+domain+")");
-			LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
 			LDAPSearchResults search = conn.search(domain,
 					LDAPConnection.SCOPE_SUB, queryString, null, false,
 					constraints);
@@ -1945,7 +1994,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					entry = search.next();
 					return entry;
 				} catch (LDAPReferralException ldapError) {
-					// Ignore
+					if (followReferrals)
+						throw ldapError;
 				}
 			}
 			return null;
@@ -1977,7 +2027,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						entry = search.next();
 						return entry;
 					} catch (LDAPReferralException ldapError) {
-						// Ignore
+						if (followReferrals)
+							throw ldapError;
 					}
 				}
 			} catch (LDAPException e) {
@@ -1993,6 +2044,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	@Override
 	public boolean validateUserPassword(String user, Password password)
 			throws RemoteException, InternalErrorException {
+		log.info("Validating password for "+user+" en "+ldapHost);
 		String[] ldapHosts = ldapHost.split("[, ]+");
 		LDAPEntry entry;
 		try {
@@ -2384,10 +2436,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					try {
 						LDAPEntry entry = query.next();
 						result.add( new LDAPExtensibleObject("unknown", entry, pool) );
-					} 
-					catch (LDAPReferralException e)
-					{
-						// Ignore
+					} catch (LDAPReferralException ldapError) {
+						if (followReferrals)
+							throw ldapError;
 					}
 				}			
 				return result;
@@ -2703,7 +2754,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 										LDAPEntry entry = search.next();
 										
 										accounts.add(generateAccountName(entry, mapping, "accountName"));
-									} catch (LDAPReferralException e) {
+									} catch (LDAPReferralException ldapError) {
+										if (followReferrals)
+											throw ldapError;
 									} catch (LDAPException e) {
 										handleException(e, conn);
 										if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
@@ -2986,7 +3039,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 										{
 											log.info("Got "+accountName+" => "+entry.getDN());
 										}
-									} catch (LDAPReferralException e) {
+									} catch (LDAPReferralException ldapError) {
+										if (followReferrals)
+											throw ldapError;
 									}
 								}
 	
@@ -3064,23 +3119,27 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								LDAPAttribute memberofattr = entry.getAttribute("memberOf");
 								String soffidGroups[] = ((memberofattr == null) ? new String[] {}
 										: memberofattr.getStringValueArray());
-								for (int i = 0; i < soffidGroups.length; i++) {
-									LDAPEntry groupEntry;
-									try {
-										groupEntry = searchEntry(soffidGroups[i]);
-									} catch (Exception e) {
-										throw new InternalErrorException("Error fetching group "+soffidGroups[i], e);
-									}
-									String accountName = generateAccountName(groupEntry, null, "name"); 
-									RolGrant rg = new RolGrant();
-									rg.setDispatcher(getCodi());
-									rg.setOwnerRolName(roleName);
-									rg.setOwnerDispatcher(getCodi());
-									rg.setRolName(accountName);
-									l.add(rg);
-								}	
+								if (useNestedGroups() ) {
+									for (int i = 0; i < soffidGroups.length; i++) {
+										LDAPEntry groupEntry;
+										try {
+											groupEntry = searchEntry(soffidGroups[i]);
+										} catch (Exception e) {
+											throw new InternalErrorException("Error fetching group "+soffidGroups[i], e);
+										}
+										String accountName = generateAccountName(groupEntry, null, "name"); 
+										RolGrant rg = new RolGrant();
+										rg.setDispatcher(getCodi());
+										rg.setOwnerRolName(roleName);
+										rg.setOwnerDispatcher(getCodi());
+										rg.setRolName(accountName);
+										l.add(rg);
+									}	
+									rol.setOwnedRoles(l);
+								} else {
+									rol.setOwnedRoles(null);
+								}
 								rol.setOwnerRoles(null);
-								rol.setOwnedRoles(l);
 								
 								rolesCache.put(entry.getDN().toLowerCase(), rol);
 								return rol;
@@ -4177,7 +4236,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				entry = search.next();
 				return entry;
 			} catch (LDAPReferralException ldapError) {
-				// Ignore
+				if (followReferrals)
+					throw ldapError;
 			}
 		}
 		return null;
@@ -4265,8 +4325,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					LDAPEntry entry = null;
 					try {
 						entry = searchResults.next();
-					} catch (LDAPReferralException e) {
-//						log.info("Cannot follow referral: "+e.toString());
+					} catch (LDAPReferralException ldapError) {
+						if (followReferrals)
+							throw ldapError;
 					} catch (LDAPException e) {
 						if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
 							// Ignore
@@ -4570,11 +4631,15 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		b.append(" ").append(ldapAttribute.getName());
 		if (op != LDAPModification.DELETE) {
 			b.append(" = [");
-			String[] v = ldapAttribute.getStringValueArray();
-			for (int j = 0; j < v.length; j++) {
-				if (j > 0)
-					b.append(", ");
-				b.append(v[j]);
+			if (ldapAttribute.getName().equalsIgnoreCase("unicodePwd")) {
+				b.append("*****************");
+			} else {
+				String[] v = ldapAttribute.getStringValueArray();
+				for (int j = 0; j < v.length; j++) {
+					if (j > 0)
+						b.append(", ");
+					b.append(v[j]);
+				}
 			}
 			b.append("]");
 		}
@@ -4897,21 +4962,23 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				searchBaseDN = baseDN + mapping.getProperties().get(RELATIVE_DN);
 			else
 				searchBaseDN = baseDN;
-			for (String att : dummySystemObject.getAttributes()) {
-				String value = vom.toSingleString(dummySystemObject
-						.getAttribute(att));
-				if ("baseDN".equalsIgnoreCase(att) ||
-						RELATIVE_DN.equalsIgnoreCase(att)) {
-				} else if (!"dn".equalsIgnoreCase(att)) {
-					if (value != null) {
-						sb.append("(").append(att).append("=")
-								.append(escapeLDAPSearchFilter(value))
-								.append(")");
-						any = true;
+			if (mapping.getProperties().containsKey("searchQuery"))
+				sb.append(mapping.getProperties().get("searchQuery"));
+			else {
+				for (String att : dummySystemObject.getAttributes()) {
+					String value = vom.toSingleString(dummySystemObject
+							.getAttribute(att));
+					if ("objectClass".equalsIgnoreCase(att)) {
+						if (value != null) {
+							sb.append("(").append(att).append("=")
+									.append(escapeLDAPSearchFilter(value))
+									.append(")");
+							any = true;
+						}
 					}
 				}
 			}
-
+			
 			if (nextChange != null && !multiDomain)
 				sb.append("(uSNChanged>=")
 						.append(escapeLDAPSearchFilter(nextChange))
@@ -5387,7 +5454,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				try {
 					LDAPEntry entry = query.next();
 					return entry;
-				} catch (LDAPReferralException e) {
+				} catch (LDAPReferralException ldapError) {
+					if (followReferrals)
+						throw ldapError;
 				}
 			}
 		} catch (LDAPException e) {

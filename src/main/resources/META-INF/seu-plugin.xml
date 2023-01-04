@@ -62,6 +62,8 @@
 
 			<mapping soffidAttribute='"user"' systemAttribute='objectClass'
 				direction="out" />
+			<mapping soffidAttribute='userName' systemAttribute='sAMAccountName'
+				direction="in" />
 			<mapping soffidAttribute='fullName' systemAttribute='cn'
 				direction="out" />
 			<mapping soffidAttribute='firstName' systemAttribute='givenName'
@@ -69,18 +71,20 @@
 			<mapping soffidAttribute='lastName' systemAttribute='sn'
 				direction="inout" />
 			<mapping
-				soffidAttribute='shortName==null || shortName==void ? attributes{"MAIL"} : shortName+"@"+mailDomain'
+				soffidAttribute='emailAddress'
 				systemAttribute='mail' direction="out" />
-			<mapping soffidAttribute='primaryGroup' systemAttribute='departmentNumber'
+			<mapping soffidAttribute='/*js*/primaryGroupObject.description' systemAttribute='relativeBaseDn'
 				direction="out" />
-			<mapping soffidAttribute='"cn=Users"' systemAttribute='relativeBaseDn'
-				direction="out" />
-			<mapping soffidAttribute='profileServer.equals("null") ? null : "\\\\"+profileServer+"\\PROFILES\\"+accountName'
+			<mapping-ext systemAttribute='/*js*/&#10;var name = new javax.naming.ldap.LdapName(distinguishedName);&#10;var rdns = name.rdns;&#10;var g = null;&#10;var rn = null;&#10;for (var i = rdns.size() - 2; i > 0; i--) {&#10;  if (rdns[i].type == "DC") break;&#10;  if (g == null) {g = "", rn = ""}&#10;  else {g = g + "/"; rn = "," + rn}&#10;  g += rdns[i].value.toLowerCase();&#10;  rn = rdns[i].type+"="+rdns[i].value;&#10;}&#10;var gi = serviceLocator.groupService.findGroupByGroupName(g);&#10;if (gi == null) {&#10;  var parent = ! rn.contains("/") ?&#10;    "world":&#10;  	rn.substring(0, rn.lastIndexOf("/"));&#10;  gi = new com.soffid.iam.api.Group();&#10;  gi.name = g;&#10;  gi.description = rn;&#10;  gi.parentGroup = parent;&#10;  serviceLocator.groupService.create(gi);&#10;}&#10;return g;' 
+				soffidAttribute='primaryGroup'
+				direction="in" />
+			<mapping soffidAttribute='profileServer == null ? null : "\\\\"+profileServer+"\\PROFILES\\"+accountName'
 				systemAttribute='profilePath' direction='out'/>
-			<mapping soffidAttribute='homeServer.equals("null") ? null : "\\\\" +homeServer+ "\\" + accountName'
+			<mapping soffidAttribute='homeServer == null ? null : "\\\\" +homeServer+ "\\" + accountName'
 				systemAttribute='homeDirectory' direction='out'/>
-			<mapping soffidAttribute='homeServer.equals("null") ? null : "H:"'
-				systemAttribute='homeDrive' direction="out"/>
+			<mapping systemAttribute="(Integer.parseInt( userAccountControl ) &amp; 2) == 0"
+				soffidAttribute="active"
+				direction="in"/>
 		</object>
 
 		<object systemObject="account" soffidObject="account">
@@ -105,18 +109,6 @@
 			<mapping soffidAttribute='description' systemAttribute='description'
 				direction="inout" />
 		</object>
-
-		<object systemObject="group" soffidObject="group">
-			<mapping soffidAttribute='"cn=Groups"' systemAttribute='relativeBaseDn'
-				direction="out" />
-			<mapping soffidAttribute='"group"' systemAttribute='objectClass'
-				direction="out" />
-			<mapping soffidAttribute='name' systemAttribute='cn'
-				direction="inout" />
-			<mapping soffidAttribute='description' systemAttribute='description'
-				direction="inout" />
-		</object>
-
 	</agent>
 	<agent>
 		<name>Simple Windows Agent</name>
