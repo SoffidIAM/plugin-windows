@@ -105,7 +105,7 @@
 				soffidAttribute='"ou=Roles"'
 				systemAttribute='relativeBaseDn' direction="out" />
 			<mapping soffidAttribute='name' systemAttribute='cn'
-				direction="inout" />
+				direction="out" />
 			<mapping soffidAttribute='description' systemAttribute='description'
 				direction="inout" />
 		</object>
