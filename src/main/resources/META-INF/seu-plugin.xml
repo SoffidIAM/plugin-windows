@@ -82,7 +82,7 @@
 				systemAttribute='profilePath' direction='out'/>
 			<mapping soffidAttribute='homeServer == null ? null : "\\\\" +homeServer+ "\\" + accountName'
 				systemAttribute='homeDirectory' direction='out'/>
-			<mapping systemAttribute="(Integer.parseInt( userAccountControl ) &amp; 2) == 0"
+			<mapping systemAttribute="/*js*/ (Number( userAccountControl ) &amp; 2) == 0"
 				soffidAttribute="active"
 				direction="in"/>
 		</object>

@@ -471,7 +471,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 
 	protected LDAPConnection getConnection(String domain) throws Exception {
-		log.info(getCodi() + ": Searching for pool "+domain);
 		LDAPPool pool = getPool(domain);
 		if (pool == null && domain != null) {
 			log.info("Finding pool for "+domain);
