@@ -869,8 +869,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					}
 
 					if (ldapUser != null) {
-						performPasswordChange(ldapUser, accountName, password,
+						sourceObject.put("password", password.getPassword());
+						sourceObject.put("mustChangePassword", mustchange);
+						if (preSetPassword(sourceObject, password, ldapUser)) {
+							performPasswordChange(ldapUser, accountName, password,
 								mustchange, delegation, false, enabled);
+							postSetPassword(sourceObject, password, ldapUser);
+						}
 					}
 					return;
 				} catch (LDAPException e) {
@@ -881,6 +886,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								performPasswordChange(ldapUser, accountName,
 										password, mustchange, delegation, true,
 										enabled);
+								postSetPassword(sourceObject, password, ldapUser);
 							} catch (Exception e2) {
 								String msg = "UpdateUserPassword('" + accountName
 										+ "')";
@@ -899,6 +905,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							performPasswordChange(ldapUser, accountName,
 									password, mustchange, delegation, true,
 									enabled);
+							postSetPassword(sourceObject, password, ldapUser);
 						} catch (Exception e2) {
 							String msg = "UpdateUserPassword('" + accountName
 									+ "')";
@@ -4899,6 +4906,20 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	protected boolean postDeleteTrigger(String stringValue, String userName,
 			LDAPEntry groupEntry, LDAPEntry userEntry)
+			throws InternalErrorException {
+		return true;
+	}
+
+	protected boolean preSetPassword(ExtensibleObject soffidObject,
+			Password password,
+			LDAPEntry currentEntry)
+			throws InternalErrorException {
+		return true;
+	}
+
+	protected boolean postSetPassword(ExtensibleObject soffidObject,
+			Password password,
+			LDAPEntry currentEntry)
 			throws InternalErrorException {
 		return true;
 	}

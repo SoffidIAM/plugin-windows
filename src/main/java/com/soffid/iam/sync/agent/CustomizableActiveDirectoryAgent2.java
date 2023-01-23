@@ -7,6 +7,7 @@ import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPEntry;
 
 import es.caib.seycon.ng.comu.ObjectMappingTrigger;
+import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.comu.Rol;
 import es.caib.seycon.ng.comu.RolGrant;
 import es.caib.seycon.ng.comu.SoffidObjectTrigger;
@@ -29,8 +30,17 @@ public class CustomizableActiveDirectoryAgent2 extends
 			ExtensibleObject adObject,
 			LDAPEntry currentEntry) throws InternalErrorException
 	{
+		return runTrigger(triggerType.toString(), soffidObject, adObject, currentEntry, null);
+	}
+	
+	protected boolean runTrigger (String triggerTypeString,
+			ExtensibleObject soffidObject,
+			ExtensibleObject adObject,
+			LDAPEntry currentEntry,
+			Password password) throws InternalErrorException
+	{
 		if (isDebug())
-			log.info("BEGIN Running triggers "+soffidObject.getObjectType()+"."+triggerType.toString());
+			log.info("BEGIN Running triggers "+soffidObject.getObjectType()+"."+triggerTypeString);
 		try {
 			SoffidObjectType sot = SoffidObjectType.fromString(soffidObject.getObjectType());
 			for ( ExtensibleObjectMapping eom : objectTranslator.getObjectsBySoffidType(sot))
@@ -39,7 +49,7 @@ public class CustomizableActiveDirectoryAgent2 extends
 				{
 					for ( ObjectMappingTrigger trigger: eom.getTriggers())
 					{
-						if (trigger.getTrigger().equals (triggerType))
+						if (trigger.getTrigger().toString().equals (triggerTypeString))
 						{
 							log.info("Found trigger "+trigger.getTrigger());
 							ExtensibleObject eo = new ExtensibleObject();
@@ -52,7 +62,7 @@ public class CustomizableActiveDirectoryAgent2 extends
 							}
 							if ( ! objectTranslator.evalExpression(eo, trigger.getScript()) )
 							{
-								log.info("Trigger "+triggerType+" returned false");
+								log.info("Trigger "+triggerTypeString+" returned false");
 								if (debugEnabled)
 								{
 									if (currentEntry != null)
@@ -180,6 +190,20 @@ public class CustomizableActiveDirectoryAgent2 extends
 	protected boolean preDelete(ExtensibleObject soffidObject,
 			LDAPEntry currentEntry) throws InternalErrorException {
 		return runTrigger(SoffidObjectTrigger.PRE_DELETE, soffidObject, null, currentEntry);
+	}
+
+	@Override
+	protected boolean preSetPassword(ExtensibleObject soffidObject,
+			Password password,
+			LDAPEntry currentEntry) throws InternalErrorException {
+		return runTrigger("preSetPassword", soffidObject, buildExtensibleObject(currentEntry), currentEntry, password);
+	}
+
+	@Override
+	protected boolean postSetPassword(ExtensibleObject soffidObject,
+			Password password,
+			LDAPEntry currentEntry) throws InternalErrorException {
+		return runTrigger("postSetPassword", soffidObject, buildExtensibleObject(currentEntry), currentEntry, password);
 	}
 
 	@Override
