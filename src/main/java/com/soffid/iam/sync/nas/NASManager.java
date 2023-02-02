@@ -915,7 +915,7 @@ public class NASManager {
 			IOException exception = null;
 			for (String h: host.split("[ ,]+")) {
 				try {
-					adConnection = adClient.connect(host);
+					adConnection = adClient.connect(h);
 					break;
 				} catch (IOException e) {
 					exception = e;
