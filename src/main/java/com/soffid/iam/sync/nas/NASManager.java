@@ -911,8 +911,19 @@ public class NASManager {
 		            .build();
 			adClient = new SMBClient(config);
 		}
-		if (adConnection == null)
-			adConnection = adClient.connect(host);
+		if (adConnection == null) {
+			IOException exception = null;
+			for (String h: host.split("[ ,]+")) {
+				try {
+					adConnection = adClient.connect(host);
+					break;
+				} catch (IOException e) {
+					exception = e;
+				}
+			}
+			if (adConnection == null)
+				throw exception;
+		}
 		if (adSession == null)
 		{
 			final AuthenticationContext adAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
@@ -1056,36 +1067,41 @@ public class NASManager {
 	}
 
 	public void setServicePassword(String service, com.soffid.iam.api.Password password2) throws InternalErrorException {
-		try (final Connection smbConnection = smbClient.connect(this.host)) {
-		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
-		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
-			try {
-				final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
-				ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
-				ServiceManagerHandle smh = svc.openServiceManagerHandle();
-				
-				ServiceHandle h = svc.openServiceHandle(smh, service);
-				IServiceConfigInfo config = svc.queryServiceConfig(h);
-				ServiceConfigInfo config2 = new ServiceConfigInfo(
-						config.getServiceType(),
-						config.getStartType(),
-						config.getErrorControl(),
-						config.getBinaryPathName(), 
-						config.getLoadOrderGroup(),
-						config.getTagId(),
-						config.getDependencies(),
-						config.getServiceStartName(),
-						config.getDisplayName(),
-						password.getPassword());
-				
-				svc.changeServiceConfig(h, config2);
-				svc.closeServiceHandle(h);
-			} finally {
-				session.close();
+		IOException ex = null;
+		for (String hn: host.split("[ ,]+")) {
+			try (final Connection smbConnection = smbClient.connect(hn)) {
+			    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+			    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+				try {
+					final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
+					ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
+					ServiceManagerHandle smh = svc.openServiceManagerHandle();
+					
+					ServiceHandle h = svc.openServiceHandle(smh, service);
+					IServiceConfigInfo config = svc.queryServiceConfig(h);
+					ServiceConfigInfo config2 = new ServiceConfigInfo(
+							config.getServiceType(),
+							config.getStartType(),
+							config.getErrorControl(),
+							config.getBinaryPathName(), 
+							config.getLoadOrderGroup(),
+							config.getTagId(),
+							config.getDependencies(),
+							config.getServiceStartName(),
+							config.getDisplayName(),
+							password.getPassword());
+					
+					svc.changeServiceConfig(h, config2);
+					svc.closeServiceHandle(h);
+					return;
+				} finally {
+					session.close();
+				}
+			} catch (IOException e) {
+				ex = e;
 			}
-		} catch (IOException e) {
-			throw new InternalErrorException("Error fetching services", e);
 		}
+		throw new InternalErrorException("Error fetching services", ex);
 	}
 
 	public String[] parseAuthData ( Map<String, Object> params) {
