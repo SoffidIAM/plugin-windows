@@ -194,16 +194,18 @@ public class CustomizableActiveDirectoryAgent2 extends
 
 	@Override
 	protected boolean preSetPassword(ExtensibleObject soffidObject,
+			ExtensibleObject adObject,
 			Password password,
 			LDAPEntry currentEntry) throws InternalErrorException {
-		return runTrigger("preSetPassword", soffidObject, buildExtensibleObject(currentEntry), currentEntry, password);
+		return runTrigger("preSetPassword", soffidObject, adObject, currentEntry, password);
 	}
 
 	@Override
 	protected boolean postSetPassword(ExtensibleObject soffidObject,
+			ExtensibleObject adObject,
 			Password password,
 			LDAPEntry currentEntry) throws InternalErrorException {
-		return runTrigger("postSetPassword", soffidObject, buildExtensibleObject(currentEntry), currentEntry, password);
+		return runTrigger("postSetPassword", soffidObject, adObject, currentEntry, password);
 	}
 
 	@Override

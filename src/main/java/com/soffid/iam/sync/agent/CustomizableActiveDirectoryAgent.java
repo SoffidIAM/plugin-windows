@@ -871,10 +871,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					if (ldapUser != null) {
 						sourceObject.put("password", password.getPassword());
 						sourceObject.put("mustChangePassword", mustchange);
-						if (preSetPassword(sourceObject, password, ldapUser)) {
+						if (preSetPassword(sourceObject, object, password, ldapUser)) {
 							performPasswordChange(ldapUser, accountName, password,
 								mustchange, delegation, false, enabled);
-							postSetPassword(sourceObject, password, ldapUser);
+							postSetPassword(sourceObject, object, password, ldapUser);
 						}
 					}
 					return;
@@ -886,7 +886,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								performPasswordChange(ldapUser, accountName,
 										password, mustchange, delegation, true,
 										enabled);
-								postSetPassword(sourceObject, password, ldapUser);
+								postSetPassword(sourceObject, object, password, ldapUser);
 							} catch (Exception e2) {
 								String msg = "UpdateUserPassword('" + accountName
 										+ "')";
@@ -905,7 +905,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							performPasswordChange(ldapUser, accountName,
 									password, mustchange, delegation, true,
 									enabled);
-							postSetPassword(sourceObject, password, ldapUser);
+							postSetPassword(sourceObject, object, password, ldapUser);
 						} catch (Exception e2) {
 							String msg = "UpdateUserPassword('" + accountName
 									+ "')";
@@ -4911,14 +4911,14 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 	protected boolean preSetPassword(ExtensibleObject soffidObject,
-			Password password,
+			ExtensibleObject object, Password password,
 			LDAPEntry currentEntry)
 			throws InternalErrorException {
 		return true;
 	}
 
 	protected boolean postSetPassword(ExtensibleObject soffidObject,
-			Password password,
+			ExtensibleObject object, Password password,
 			LDAPEntry currentEntry)
 			throws InternalErrorException {
 		return true;
