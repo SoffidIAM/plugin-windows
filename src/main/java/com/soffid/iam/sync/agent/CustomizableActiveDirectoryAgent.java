@@ -641,7 +641,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					if (dnsName != null)
 					{
 						String hostName = dnsName.getStringValue();
-						if (Arrays.binarySearch(excluded, dnsName) >= 0)
+						if (Arrays.binarySearch(excluded, hostName) >= 0)
 							log.info("  IGNORING domain controller: "+hostName);
 						else {
 							log.info("  Found domain controller: "+hostName);
@@ -1902,7 +1902,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						for (String d: dns)
 						{
 							log.info("About to remove "+d);
-							conn.delete(d);
+							LDAPConstraints c = conn.getConstraints();
+							LDAPControl recursivelyDelete = new LDAPControl ("1.2.840.113556.1.4.805", true, null);
+							c.setControls(recursivelyDelete);
+							conn.delete(d, c);
 						}
 						postDelete(source, entry);
 					} catch (Exception e) {
@@ -4481,7 +4484,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		AuthoritativeChange change = null;
 		Usuari user = vom.parseUsuari(object);
 		if (user != null) {
-			
 			if ( user.getActiu() == null) {
 				Object uac = ldapObject.get("userAccountControl");
 				if (uac != null) {
@@ -4541,6 +4543,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 		return change;
 	}
+
 
 	private void parseGroup(Collection<AuthoritativeChange> changes, ExtensibleObject object)
 			throws InternalErrorException {
@@ -5086,29 +5089,36 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			loadChangesThread = new HashMap<String,Thread>();
 		for (String domain: domainHost.keySet())
 		{
-			Thread th = loadChangesThread.get(domain);
-			if (th == null || ! th.isAlive())
-			{
-				RealTimeChangeLoader rtl = new RealTimeChangeLoader();
-				rtl.setAgent(this);
-				rtl.setAgentName(getDispatcher().getCodi());
-				rtl.setBaseDn(domain);
-				rtl.setDispatcher(getDispatcher());
-				rtl.setDebugEnabled(debugEnabled);
-				for ( ExtensibleObjectMapping mapping: objectMappings)
+			LDAPPool pool = getPool(domain);
+			List<LDAPPool> children = pool.getChildPools();
+			if (children == null || children.isEmpty())
+				createChildPools(pool);
+			for (LDAPPool controller: pool.getChildPools()) {
+				final String entryName = domain+" / "+controller.getLdapHost();
+				Thread th = loadChangesThread.get(entryName);
+				if (th == null || ! th.isAlive())
 				{
-					if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_USER))
-						rtl.setMaping(mapping);
+					RealTimeChangeLoader2 rtl = new RealTimeChangeLoader2();
+					rtl.setAgent(this);
+					rtl.setAgentName(getDispatcher().getCodi());
+					rtl.setBaseDn(domain);
+					rtl.setDispatcher(getDispatcher());
+					rtl.setDebugEnabled(debugEnabled);
+					rtl.setDomainController(controller.getLdapHost());
+					for ( ExtensibleObjectMapping mapping: objectMappings)
+					{
+						if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_USER))
+							rtl.setMaping(mapping);
+					}
+					rtl.setPool( controller );
+					rtl.setTenant(getDispatcher().getTenant());
+					th = new Thread ( rtl );
+					th.setName("RealTimeChangeLoader "+domain+" "+controller.getLdapHost()+" @"+th.hashCode());
+					th.start();
+					
+					loadChangesThread.put (entryName, th);
 				}
-				rtl.setPool( getPool( domain ) );
-				rtl.setTenant(getDispatcher().getTenant());
-				th = new Thread ( rtl );
-				th.setName("RealTimeChangeLoader "+domain+" "+th.hashCode());
-				th.start();
-				
-				loadChangesThread.put (domain, th);
-			}
-			
+			}			
 		}
 	}
 
