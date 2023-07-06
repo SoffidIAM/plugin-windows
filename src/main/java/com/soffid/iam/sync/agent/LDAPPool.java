@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.MessageDigest;
@@ -168,17 +169,28 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		}
 	}
 
+	int current = 0;
 	@Override
 	protected LDAPConnection createConnection() throws Exception {
 		Exception lastException = null;
+		List<InetAddress> ip = new LinkedList<>();
 		for (String host: ldapHosts)
 		{
+			for (InetAddress address: InetAddress.getAllByName(host)) {
+				ip.add(address);
+			}
+		}
+		
+		for (int i = 0; i < ip.size(); i++) {
+			InetAddress address = ip.get( (i + current) % ip.size());
 			try {
-				return createConnection(host);
+				return createConnection(address);
 			} catch (Exception e) {
-				log.info("Error connecting to LDAP server "+host+": ", e);
+				log.info("Error connecting to LDAP server "+address+": ", e);
 				lastException = e;
 			}
+			current ++;
+			if (current >= ip.size()) current = 0;
 		}
 		
 		if (lastException == null)
@@ -188,13 +200,13 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		
 	}
 
-	protected LDAPConnection createConnection(String host) throws Exception {
+	protected LDAPConnection createConnection(InetAddress address) throws Exception {
 		try {
-			return createConnection (host, useSsl, ldapPort);
+			return createConnection (address, useSsl, ldapPort);
 		} catch (Exception e) {
 			if (alwaysTrust && useSsl) {
-				LDAPConnection conn = createConnection (host, false, LDAPConnection.DEFAULT_PORT);
-				log.warn("Error creating SSL connection to "+host+". Switching to NON-SSL connection", e);
+				LDAPConnection conn = createConnection (address, false, LDAPConnection.DEFAULT_PORT);
+				log.warn("Error creating SSL connection to "+address+". Switching to NON-SSL connection", e);
 				return conn;
 			}
 			else
@@ -203,7 +215,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		
 	}
 	
-	protected LDAPConnection createConnection(String host, boolean ssl, int port) throws Exception {
+	protected LDAPConnection createConnection(InetAddress address, boolean ssl, int port) throws Exception {
 		LDAPConnection conn;
 		if (ssl)
 		{
@@ -271,13 +283,13 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 				constraints.setTimeLimit(queryTimeout.intValue());
 			conn.setConstraints(constraints);
 			if (isDebug())
-				log.info("Connecting to "+host+":"+port);
-			conn.connect(host, port);
+				log.info("Connecting to "+address.getHostName()+" "+address.getHostAddress()+":"+port);
+			conn.connect(address.getHostAddress(), port);
 			conn.bind(ldapVersion, loginDN, password.getPassword()
 					.getBytes("UTF8"));
 			conn.setConstraints(constraints);
 			if (isDebug())
-				log.info("Connected to "+host+":"+port);
+				log.info("Connected to "+address+":"+port);
 		}
 		catch (UnsupportedEncodingException e)
 		{
@@ -288,7 +300,7 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 		{
 			if (conn != null)
 				conn.disconnect();
-			throw new InternalErrorException("Failed to connect to LDAP server "+host+" with base domain "+baseDN+" : ("
+			throw new InternalErrorException("Failed to connect to LDAP server "+address+" with base domain "+baseDN+" : ("
 					+ loginDN + ")", e);
 		}
 		return (conn);
