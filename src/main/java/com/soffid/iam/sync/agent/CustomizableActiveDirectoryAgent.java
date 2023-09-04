@@ -2090,7 +2090,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				return true;
 			} catch (UnsupportedEncodingException e) {
 			} catch (Exception e) {
-				if (useSsl && trustEverything && e.getCause() != null && e.getCause() instanceof SocketException) { // SSL Not properly configured
+				if (useSsl && trustEverything && e.getCause() != null && e.getCause() instanceof IOException) { // SSL Not properly configured
 					try {
 						log.info("Connecting using plain socket");
 						conn = createConnection (false);				
