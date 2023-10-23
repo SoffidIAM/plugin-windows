@@ -1,4 +1,5 @@
 import java.io.IOException;
+import java.util.HashMap;
 
 import com.hierynomus.mssmb2.SMB2Dialect;
 import com.hierynomus.security.bc.BCSecurityProvider;
@@ -16,7 +17,7 @@ public class NASManagerTest {
 		if (true) {
 			NASManager m;
 
-			m = new NASManager("AD", "ad.bubu.lab", "Administrator", new Password("Test70."));
+			m = new NASManager("AD", "ad.bubu.lab", "Administrator", new Password("Test70."), new HashMap<>());
 			m.createFolder("//ad.bubu.lab/c$/test-folder", null);
 			
 			m.addAcl("//ad.bubu.lab/c$/test-folder", "ppig", "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE", null);
@@ -39,7 +40,7 @@ public class NASManagerTest {
 			
 			NASManager m;
 	
- 			m = new NASManager("win-uq9f24f4d4h", "10.129.120.13", "Administrador", new Password("Test70."));
+ 			m = new NASManager("win-uq9f24f4d4h", "10.129.120.13", "Administrador", new Password("Test70."), new HashMap<>());
 			
 			m.createFolder("//10.129.120.13/c$/test-folder4", null);
 			

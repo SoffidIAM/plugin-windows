@@ -265,7 +265,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	protected Map<String,String> shortNameToDomain = new HashMap<String, String>();
 	protected Map<String,String> domainToShortName = new HashMap<String, String>();
 	protected Map<String,String> dnsNameToDomain = new HashMap<String, String>();
-
+	protected Map<String,String[]> domainControllers = new HashMap<>();
 	protected String mainDomain;
 
 	protected boolean createOUs;
@@ -401,9 +401,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				} catch (Exception e) {
 					log.info("Unable to read object "+baseDN);
 				}
+				domainControllers.put(mainDomain.toLowerCase(), ldapHost.split(" +"));
 			}
 			searchUserSamAccountName();
-			nasManager = new NASManager(samDomainName, ldapHost, samAccountName, password);
+			nasManager = new NASManager(samDomainName, ldapHost, samAccountName, password, domainControllers);
 		} catch (Exception e) {
 			handleException(e, conn);
 			throw new InternalErrorException(
@@ -585,6 +586,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								domainToShortName.put(ncn, shortName2);
 								shortNameToDomain.put(shortName2, ncn);
 								dnsNameToDomain.put(dnsName, ncn);
+								domainControllers.put(shortName.toLowerCase(), new String[] {dnsName});
 								log.info("Legacy name for "+ncn+" = "+shortName.toUpperCase());
 							}
 			            } catch (LDAPReferralException e)
@@ -605,6 +607,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				shortNameToDomain.put(shortName, dn.toLowerCase());
 				String dnsName = dn.toLowerCase().replace(",dc=", ".").replace("dc=", "");
 				dnsNameToDomain.put(dnsName, dn.toLowerCase());
+				domainControllers.put(shortName.toLowerCase(), new String[] {dnsName});
 			}
 			pools.put( getDispatcher().getId().toString()+"/"+dn, pool);
 			domainHost.put(dn, host);

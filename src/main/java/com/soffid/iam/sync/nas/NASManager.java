@@ -89,14 +89,16 @@ public class NASManager {
 	private static SMBClient adClient = null;
 	private Connection adConnection;
 	private SmbConfig config;
+	private Map<String, String[]> domainControllers;
 
 	
-	public NASManager (String domain, String host, String user, Password password) throws IOException
+	public NASManager (String domain, String host, String user, Password password, Map<String,String[]> domainControllers) throws IOException
 	{
 		this.domain = domain;
 		this.user = user;
 		this.password = password;
 		this.host = host;
+		this.domainControllers = domainControllers;
 		log.info("Initalizing NAS Manager");
 		log.info("Domain: "+domain);
 		log.info("User:   "+user);
@@ -964,13 +966,30 @@ public class NASManager {
 	{
 		String roleDomain = null;
 		int i = samAccountName.indexOf('\\');
+		SMBClient client = null;
+		Connection conn = null;
+		Session session = adSession;
 		if (i >= 0)
 		{
-//			roleDomain = groupName.substring(0,  i);
+			roleDomain = samAccountName.substring(0,  i);
 			samAccountName = samAccountName.substring(i+1);
+			if (roleDomain != null) {
+				String[] dc = domainControllers.get(roleDomain.toLowerCase());
+				if (dc != null) for (String dcn: dc) {
+					try {
+						conn = adClient.connect(dcn);
+						final AuthenticationContext adAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+						session = conn.authenticate(adAuthenticationContext);
+						log.info("Querying SID "+samAccountName+" at "+dcn);
+						break;
+					} catch (Exception e) {
+						// Cannot connect
+					}
+				}				
+			}
 		}
 		
-	    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(adSession);
+	    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
 	    SecurityAccountManagerService sam = new SecurityAccountManagerService(transport2);
 	    ServerHandle server = sam.openServer();
 	    try {
@@ -994,6 +1013,10 @@ public class NASManager {
 		    }
 	    } finally {
 	    	sam.closeHandle(server);
+	    	if (session != adSession) {
+	    		session.close();
+	    		conn.close();
+	    	}
 	    }
 	    return null;
 	}

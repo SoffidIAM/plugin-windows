@@ -2,6 +2,7 @@ package com.soffid.iam.sync.agent;
 
 import java.io.IOException;
 import java.rmi.RemoteException;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -21,7 +22,7 @@ public class RemoteWindowsAgent_v2 extends RemoteWindowsAgent implements Service
 	@Override
 	public List<HostService> getHostServices() throws RemoteException, InternalErrorException {
 		try {
-			NASManager nasManager = new NASManager(serverName, serverName, userName, password);
+			NASManager nasManager = new NASManager(serverName, serverName, userName, password, new HashMap<>());
 			List<String> servers = new LinkedList<>();
 			servers.add(serverName);
 			return nasManager.getServices(servers);
@@ -34,7 +35,7 @@ public class RemoteWindowsAgent_v2 extends RemoteWindowsAgent implements Service
 	public void setServicePassword(String service, Account account, Password password)
 			throws RemoteException, InternalErrorException {
 		try {
-			NASManager nasManager = new NASManager(serverName, serverName, userName, this.password);
+			NASManager nasManager = new NASManager(serverName, serverName, userName, this.password, new HashMap<>());
 			nasManager.setServicePassword(service, password);
 		} catch (IOException e) {
 			throw new InternalErrorException("Error fetching services", e);
