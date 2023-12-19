@@ -423,7 +423,7 @@ public class NASManager {
 			try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
 		    	Directory of = null;
 		    	if (share.folderExists(path) && recursive)
-		    		recursiveRemove(share, path, auth[1], out);
+		    		recursiveRemove(share, path, auth[0]+"\\"+auth[1], out);
 		    	else if (share.folderExists(path))
 		    		share.rmdir(path, false);
 		    	else if (share.fileExists(path))
@@ -969,6 +969,7 @@ public class NASManager {
 		SMBClient client = null;
 		Connection conn = null;
 		Session session = adSession;
+		log.info("Querying SID "+samAccountName+" / "+domainControllers);
 		if (i >= 0)
 		{
 			roleDomain = samAccountName.substring(0,  i);

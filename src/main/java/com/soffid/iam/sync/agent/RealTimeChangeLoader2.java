@@ -15,6 +15,7 @@ import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPControl;
 import com.novell.ldap.LDAPEntry;
 import com.novell.ldap.LDAPException;
+import com.novell.ldap.LDAPModification;
 import com.novell.ldap.LDAPReferralException;
 import com.novell.ldap.LDAPSearchConstraints;
 import com.novell.ldap.LDAPSearchResults;
@@ -98,7 +99,7 @@ public class RealTimeChangeLoader2 implements Runnable {
 	
 	public void run() {
 		try {
-			log.info("Starting last login loader for " + domainController);
+			log.info("Starting real time loader for " + domainController);
 			Security.nestedLogin(tenant, agentName, Security.ALL_PERMISSIONS);
 			LDAPConnection conn = pool.getConnection();
 			Config config = Config.getConfig();
@@ -113,72 +114,116 @@ public class RealTimeChangeLoader2 implements Runnable {
 			String lastLoad = "0";
 			if (cfg != null && cfg.getValue() != null)
 				lastLoad = cfg.getValue();
+			else
+				lastLoad = generateDummyUpdate(conn);
 			DateFormat dateFormat = SimpleDateFormat.getDateTimeInstance(SimpleDateFormat.SHORT,
 					SimpleDateFormat.SHORT);
 			long start = System.currentTimeMillis();
 			String query;
-			query = "(&(!(usnChanged<=" + lastLoad + "))(objectClass=user)(!(objectClass=computer)))";
+			query = "(&(usnChanged>=" + lastLoad + ")(objectClass=user)(!(objectClass=computer)))";
 			LDAPPagedResultsControl pageResult = new LDAPPagedResultsControl(
 					conn.getSearchConstraints().getMaxResults(), false);
 			
 			LDAPControl deletedObjects = new LDAPControl ("1.2.840.113556.1.4.417", true, null);
 
-			do {
-				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getSearchConstraints());
-				constraints.setControls(new LDAPControl[] { deletedObjects, pageResult} );
-				log.info("Looking for changes in " + domainController + " LDAP QUERY=" + query + " on " + baseDn);
-				LDAPSearchResults search = conn.search(baseDn, LDAPConnection.SCOPE_SUB, query,
-						null, false, constraints);
-				while (search.hasMore()) {
-					try {
-						LDAPEntry entry = search.next();
-						process(entry);
-						String ll = entry.getAttribute("usnChanged").getStringValue();
-						if (ll != null && Integer.parseInt(ll) > Integer.parseInt(lastLoad))
-							lastLoad = ll;
-					} catch (LDAPReferralException e) {
-						// Ignore
-					} catch (LDAPException e) {
-						if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
+			try {
+				do {
+					LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getSearchConstraints());
+					constraints.setControls(new LDAPControl[] { deletedObjects, pageResult} );
+					log.info("Looking for changes in " + domainController + " LDAP QUERY=" + query + " on " + baseDn);
+					LDAPSearchResults search = conn.search(baseDn, LDAPConnection.SCOPE_SUB, query,
+							null, false, constraints);
+					while (search.hasMore()) {
+						try {
+							LDAPEntry entry = search.next();
+							process(entry);
+							String ll = entry.getAttribute("usnChanged").getStringValue();
+							if (ll != null && Integer.parseInt(ll) >= Integer.parseInt(lastLoad))
+								lastLoad = Integer.toString(Integer.parseInt(ll)+1);
+						} catch (LDAPReferralException e) {
 							// Ignore
-						} else {
-							log.debug("LDAP Exception: " + e.toString());
-							log.debug("ERROR MESSAGE: " + e.getLDAPErrorMessage());
-							log.debug("LOCALIZED MESSAGE: " + e.getLocalizedMessage());
-							throw e;
+						} catch (LDAPException e) {
+							if (e.getResultCode() == LDAPException.NO_SUCH_OBJECT) {
+								// Ignore
+							} else {
+								log.debug("LDAP Exception: " + e.toString());
+								log.debug("ERROR MESSAGE: " + e.getLDAPErrorMessage());
+								log.debug("LOCALIZED MESSAGE: " + e.getLocalizedMessage());
+								throw e;
+							}
 						}
 					}
-				}
-
-				LDAPControl responseControls[] = search.getResponseControls();
-				pageResult.setCookie(null); // in case no cookie is
-											// returned we need
-											// to step out of
-											// do..while
-
-				if (responseControls != null) {
-					for (int i = 0; i < responseControls.length; i++) {
-						if (responseControls[i] instanceof LDAPPagedResultsResponse) {
-							LDAPPagedResultsResponse response = (LDAPPagedResultsResponse) responseControls[i];
-							pageResult.setCookie(response.getCookie());
+	
+					LDAPControl responseControls[] = search.getResponseControls();
+					pageResult.setCookie(null); // in case no cookie is
+												// returned we need
+												// to step out of
+												// do..while
+	
+					if (responseControls != null) {
+						for (int i = 0; i < responseControls.length; i++) {
+							if (responseControls[i] instanceof LDAPPagedResultsResponse) {
+								LDAPPagedResultsResponse response = (LDAPPagedResultsResponse) responseControls[i];
+								pageResult.setCookie(response.getCookie());
+							}
 						}
 					}
+				} while (pageResult.getCookie() != null);
+	
+				if (cfg == null) {
+					cfg = new Configuration();
+					cfg.setCode(paramName);
+					cfg.setValue(lastLoad);
+					cfg.setDescription("Finished on "+ new Date().toString());
+					configService.create(cfg);
+				} else {
+					cfg.setValue(lastLoad);
+					cfg.setDescription("Finished on "+ new Date().toString());
+					configService.update(cfg);
 				}
-			} while (pageResult.getCookie() != null);
-
-			if (cfg == null) {
-				cfg = new Configuration();
-				cfg.setCode(paramName);
-				cfg.setValue(lastLoad);
-				configService.create(cfg);
-			} else {
-				cfg.setValue(lastLoad);
-				configService.update(cfg);
+			} catch (Exception e) {
+				if (cfg == null) {
+					cfg = new Configuration();
+					cfg.setCode(paramName);
+					cfg.setValue(lastLoad);
+					cfg.setDescription("** Not finished yet **");
+					configService.create(cfg);
+				} else if ("** Not finished yet **".equals(cfg.getDescription())) {
+					cfg.setValue(lastLoad);
+					configService.update(cfg);
+				}
+				log.warn("Error retrieving last logon attributes for domain controller " + domainController, e);
 			}
 		} catch (Exception e) {
 			log.warn("Error retrieving last logon attributes for domain controller " + domainController, e);
 		} finally {
 			pool.returnConnection();
+		}
+	}
+
+	private String generateDummyUpdate(LDAPConnection conn) {
+		try {
+			String dn = agent.getAdministratorDN();
+			if (dn == null) 
+				return "0";
+			LDAPEntry entry = conn.read(dn);
+			if (entry == null)
+				return "0";
+			LDAPAttribute description = entry.getAttribute("description");
+			if (description == null)
+				conn.modify(dn, new LDAPModification(LDAPModification.ADD, new LDAPAttribute("description", domainController)));
+			else
+				conn.modify(dn, new LDAPModification(LDAPModification.REPLACE, new LDAPAttribute("description", domainController)));
+			
+			LDAPEntry entry2 = conn.read(dn);
+			if (description == null)
+				conn.modify(dn, new LDAPModification(LDAPModification.DELETE, entry2.getAttribute("description")));
+			else
+				conn.modify(dn, new LDAPModification(LDAPModification.REPLACE, description));
+			return entry2.getAttribute("usnChanged").getStringValue();
+		} catch (LDAPException e) {
+			// Ignore
+			return "0";
 		}
 	}
 
@@ -262,7 +307,8 @@ public class RealTimeChangeLoader2 implements Runnable {
 							accountName = agent.generateAccountName(entry, mapping, "accountName");
 						}
 					}
-					log.info("Reconcile account name = " + accountName);
+					String ll = entry.getAttribute("usnChanged").getStringValue();
+					log.info("Reconcile account name = " + accountName+ " usnChanged = "+ll);
 					if (accountName != null) {
 						new es.caib.seycon.ng.remote.RemoteServiceLocator().getServerService()
 								.reconcileAccount(dispatcher.getCodi(), accountName);

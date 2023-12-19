@@ -282,6 +282,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	
 	protected NASManager nasManager;
 
+	private String administratorDN;
+
 	/**
 	 * Constructor
 	 * 
@@ -438,6 +440,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			{
 				samAccountName = entry.getAttribute("sAMAccountName").getStringValue();
 				samDomainName = searchNTDomainForDN(entry.getDN());
+				administratorDN = entry.getDN();
 			}
 		}
 		else {
@@ -446,6 +449,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			LDAPConnection conn = getConnection(domain);
 			try {
 				entry = conn.read(dn);
+				administratorDN = entry.getDN();
 			} catch (LDAPReferralException e) {
 				if (followReferrals)
 					throw e;
@@ -682,6 +686,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		pool.setFollowReferrals(parent.isFollowReferrals());
 		pool.setDebug (parent.isDebug());
 		pool.setLog(parent.getLog());
+		pool.setQueryTimeout(getDispatcher().getTimeout() == null ? 5000: getDispatcher().getTimeout());
 		return pool;
 	}
 
@@ -5090,14 +5095,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public void startLoadChangesThread() throws InternalErrorException {
 		if (loadChangesThread == null)
 			loadChangesThread = new HashMap<String,Thread>();
+		log.info("Checking load changes thread status");
 		for (String domain: domainHost.keySet())
 		{
+//			log.info("Checking load changes thread status for "+domain);
 			LDAPPool pool = getPool(domain);
 			List<LDAPPool> children = pool.getChildPools();
 			if (children == null || children.isEmpty())
 				createChildPools(pool);
 			for (LDAPPool controller: pool.getChildPools()) {
 				final String entryName = domain+" / "+controller.getLdapHost();
+				log.info("Checking load changes thread status for "+entryName);
 				Thread th = loadChangesThread.get(entryName);
 				if (th == null || ! th.isAlive())
 				{
@@ -5513,6 +5521,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	public List getHostServices() throws RemoteException, InternalErrorException {
 		return new LinkedList();
+	}
+
+
+	public String getAdministratorDN() {
+		return administratorDN;
+	}
+
+
+	public void setAdministratorDN(String administratorDN) {
+		this.administratorDN = administratorDN;
 	}
 }
 

@@ -200,6 +200,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 					}
 				}
 			});
+    		th.setName("Get last logon from "+p.getLdapHost());
     		poolThread.add(th);
     		th.start();
     	}
@@ -207,8 +208,9 @@ public class LDAPExtensibleObject extends ExtensibleObject
     	for (Thread th: poolThread)
     	{
     		try {
-				th.join();
+				th.join(5000);
 			} catch (InterruptedException e) {
+				log.info("Error accessing "+th.getName());
 			}
     	}
     	if (lastLogon == null)
