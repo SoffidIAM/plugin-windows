@@ -738,7 +738,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 			Map<String, Object> params) throws RemoteException, InternalErrorException 
 	{
 		Collection<Map<String, Object>> l = new LinkedList<Map<String, Object>>();
-		if (verb.equals("hostName"))
+		if (verb.equals("hostname"))
 		{
 			Session session;
 			try {
@@ -746,7 +746,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 				try {
 					String s = session.getConnection().getConnectionInfo().getNetBiosName();
 					HashMap<String, Object> m = new HashMap<String,Object>();
-					m.put("result", s);
+					m.put("result", s.toLowerCase());
 					l = new LinkedList<>();
 					l.add(m);
 				} finally {
