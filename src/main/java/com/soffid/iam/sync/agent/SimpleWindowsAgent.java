@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.mssmb2.SMBApiException;
@@ -31,11 +32,16 @@ import com.soffid.iam.api.Account;
 import com.soffid.iam.api.AccountStatus;
 import com.soffid.iam.api.DataType;
 import com.soffid.iam.api.Password;
+import com.soffid.iam.api.PasswordValidation;
 import com.soffid.iam.api.Role;
 import com.soffid.iam.api.RoleGrant;
+import com.soffid.iam.api.SoffidObjectType;
 import com.soffid.iam.api.User;
 import com.soffid.iam.remote.RemoteServiceLocator;
 import com.soffid.iam.service.AdditionalDataService;
+import com.soffid.iam.sync.intf.ExtensibleObject;
+import com.soffid.iam.sync.intf.ExtensibleObjectMapping;
+import com.soffid.iam.sync.intf.ExtensibleObjectMgr;
 import com.soffid.iam.sync.intf.ReconcileMgr2;
 import com.soffid.iam.sync.intf.UserMgr;
 import com.soffid.msrpc.samr.DispEntry;
@@ -46,7 +52,7 @@ import es.caib.seycon.ng.comu.TypeEnumeration;
 import es.caib.seycon.ng.config.Config;
 import es.caib.seycon.ng.exception.InternalErrorException;
 
-public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 {
+public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2, ExtensibleObjectMgr {
 	final SMBClient smbClient = new SMBClient();
 	private String user;
 	private Password password;
@@ -710,4 +716,46 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2 
 
 	}
 
+	@Override
+	public void configureMappings(Collection<ExtensibleObjectMapping> objects)
+			throws RemoteException, InternalErrorException {
+		
+	}
+
+	@Override
+	public ExtensibleObject getNativeObject(SoffidObjectType type, String object1, String object2)
+			throws RemoteException, InternalErrorException {
+		return null;
+	}
+
+	@Override
+	public ExtensibleObject getSoffidObject(SoffidObjectType type, String object1, String object2)
+			throws RemoteException, InternalErrorException {
+		return null;
+	}
+
+	public Collection<Map<String, Object>> invoke(String verb, String command,
+			Map<String, Object> params) throws RemoteException, InternalErrorException 
+	{
+		Collection<Map<String, Object>> l = new LinkedList<Map<String, Object>>();
+		if (verb.equals("hostName"))
+		{
+			Session session;
+			try {
+				session = getSession();
+				try {
+					String s = session.getConnection().getConnectionInfo().getNetBiosName();
+					HashMap<String, Object> m = new HashMap<String,Object>();
+					m.put("result", s);
+					l = new LinkedList<>();
+					l.add(m);
+				} finally {
+					closeSession(session);
+				}
+			} catch (IOException e) {
+				throw new InternalErrorException("Error querying host name", e);
+			}
+		}
+		return l;
+	}
 }

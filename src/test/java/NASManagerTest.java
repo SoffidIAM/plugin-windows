@@ -8,13 +8,17 @@ import com.hierynomus.smbj.SmbConfig;
 import com.hierynomus.smbj.auth.AuthenticationContext;
 import com.hierynomus.smbj.connection.Connection;
 import com.hierynomus.smbj.session.Session;
+import com.rapid7.client.dcerpc.mssamr.dto.ServerHandle;
+import com.rapid7.client.dcerpc.transport.RPCTransport;
+import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
 import com.soffid.iam.sync.nas.NASManager;
+import com.soffid.msrpc.samr.SamrService;
 
 import es.caib.seycon.ng.comu.Password;
 
 public class NASManagerTest {
 	public static void main (String args[]) throws Exception {
-		if (true) {
+		if (false) {
 			NASManager m;
 
 			m = new NASManager("AD", "ad.bubu.lab", "Administrator", new Password("Test70."), new HashMap<>());
@@ -25,25 +29,19 @@ public class NASManagerTest {
 		} else {
 			SmbConfig config = SmbConfig.builder()
 		            .withDialects( 
-		            		SMB2Dialect.SMB_2_0_2, SMB2Dialect.SMB_2_1 
+		            		SMB2Dialect.SMB_2_0_2, SMB2Dialect.SMB_2_1
 //		            		SMB2Dialect.SMB_3_0, SMB2Dialect.SMB_3_0_2, SMB2Dialect.SMB_3_1_1
 		            		)
 		            .withSecurityProvider(new BCSecurityProvider())
 		            .build();
 	
 			SMBClient smbClient = new SMBClient(config );
-			Connection adConnection = smbClient.connect("10.129.120.13");
+			Connection adConnection = smbClient.connect("192.168.133.155");
 			final AuthenticationContext adAuthenticationContext = new AuthenticationContext(
-					"Administrador", "Test70.".toCharArray(), "10.129.120.13");
+					"Administrator", "geheim01".toCharArray(), "192.168.133.155");
 			Session adSession = adConnection.authenticate(adAuthenticationContext);
-	
-			
-			NASManager m;
-	
- 			m = new NASManager("win-uq9f24f4d4h", "10.129.120.13", "Administrador", new Password("Test70."), new HashMap<>());
-			
-			m.createFolder("//10.129.120.13/c$/test-folder4", null);
-			
+			String s = adSession.getConnection().getConnectionInfo().getNetBiosName();
+			System.out.println(s);
 		}
 	}
 }
