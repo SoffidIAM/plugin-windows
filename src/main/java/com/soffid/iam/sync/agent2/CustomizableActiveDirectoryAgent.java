@@ -1,6 +1,7 @@
 package com.soffid.iam.sync.agent2;
 
 import java.rmi.RemoteException;
+import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
@@ -187,11 +188,14 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 				Map<String, Object> attributesMap = new HashMap<String, Object>();
 				for (Object attributeName : ((Map) attributes)
 						.keySet()) {
-					attributesMap
-							.put((String) attributeName,
-									(String) vom
-											.toSingleString(((Map) attributes)
-													.get(attributeName)));
+					Object value = ((Map)attributes).get(attributeName);
+					if (value == null || value instanceof Date ||
+							value instanceof Calendar) {
+						attributesMap.put(attributeName.toString(), value);
+					}
+					else {
+						attributesMap.put(attributesMap.toString(), vom.toSingleString(value));
+					}
 				}
 				change.setAttributes(attributesMap);
 			}
