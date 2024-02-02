@@ -2558,6 +2558,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			LDAPConnection conn = getConnection(domain);
 			try
 			{
+				LDAPConstraints c = conn.getConstraints();
+				LDAPControl recursivelyDelete = new LDAPControl ("1.2.840.113556.1.4.805", true, null);
+				c.setControls(recursivelyDelete);
 				conn.delete(dn);
 				return null;
 			} catch (Exception e) {
