@@ -194,7 +194,7 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 						attributesMap.put(attributeName.toString(), value);
 					}
 					else {
-						attributesMap.put(attributesMap.toString(), vom.toSingleString(value));
+						attributesMap.put(attributeName.toString(), vom.toSingleString(value));
 					}
 				}
 				change.setAttributes(attributesMap);
