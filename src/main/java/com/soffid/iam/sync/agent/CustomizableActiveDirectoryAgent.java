@@ -1909,7 +1909,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						});
 						for (String d: dns)
 						{
-							log.info("About to remove "+d);
+							log.info("About to recursively remove "+d);
 							LDAPConstraints c = conn.getConstraints();
 							LDAPControl recursivelyDelete = new LDAPControl ("1.2.840.113556.1.4.805", true, null);
 							c.setControls(recursivelyDelete);
