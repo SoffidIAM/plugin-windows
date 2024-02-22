@@ -1886,7 +1886,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 					try {
 						log.info("Removing object {}", dn, null);
 						updateLastLogon(source, object, entry);
-						List<String> dns = new LinkedList<String>();
+						LinkedList<String> dns = new LinkedList<String>();
 						dns.add(dn);
 						LDAPSearchResults search = conn.search(dn,
 								LDAPConnection.SCOPE_SUB, "", null, false);
@@ -1917,7 +1917,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 								recursivelyDelete,
 								recursivelyDeleteEx
 							});
-							conn.delete(d, c);
+							try {
+								conn.delete(d, c);
+							} catch (LDAPException e) {
+								if (d.equals(dn)) throw e;
+							}
 						}
 						postDelete(source, entry);
 					} catch (Exception e) {
