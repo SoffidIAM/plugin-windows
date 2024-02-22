@@ -34,11 +34,11 @@ public class DebugLDAPSecureSocketFactory extends LDAPJSSESecureSocketFactory {
 			UnknownHostException {
 		try {
 			Socket socket = super.createSocket(host, port);
+			socket.setSoTimeout(60_000); // One minute to get a response
 			return socket;
 		} catch (IOException e) {
 			System.out.println("Error connecting to "+host+":"+port+" "+e.toString());
 			throw e;
 		}
 	}
-
 }

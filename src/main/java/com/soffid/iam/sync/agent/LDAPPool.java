@@ -234,22 +234,14 @@ public class LDAPPool extends AbstractPool<LDAPConnection> {
 				ctx = SSLContext.getDefault();
 			}
 			
-			if (debug)
-			{
-//				if (log != null)
-//					log.debug("Creating LDAP connection to "+host);
-				DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
-				if (log != null)
-					factory.setLog(log);
-				ldapSecureSocketFactory = factory;
-				
-			}
-			else
-				ldapSecureSocketFactory = new LDAPJSSESecureSocketFactory(ctx.getSocketFactory());
-			
+			DebugLDAPSecureSocketFactory factory = new DebugLDAPSecureSocketFactory(ctx.getSocketFactory());
+			if (log != null)
+				factory.setLog(log);
+			ldapSecureSocketFactory = factory;
 			conn = new SecureLDAPConnection(ldapSecureSocketFactory);
 		} else  {
 			conn = new LDAPConnection();
+			conn.setSocketTimeOut(60_000);
 			if (debug && false)
 				log.warn("Created plain connection "+baseDN, new Exception());
 		}
