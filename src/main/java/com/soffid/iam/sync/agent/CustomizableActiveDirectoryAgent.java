@@ -1111,25 +1111,29 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						aceEveryone = ace;
 				}
 			}
-			if (aceSelf != null && aceEveryone != null && canChange) {
+			if ((aceSelf != null || aceEveryone != null) && canChange) {
 				d.getDacl().getAces().remove(aceSelf);
 				d.getDacl().getAces().remove(aceEveryone);
 				SMBBuffer outBuffer = new SMBBuffer();
 				d.write(outBuffer);
+				log.info("Changing NTSecurityDescriptor to allow password changes");
 				conn.modify(ee.getDN(), 
 						new LDAPModification(
 								LDAPModification.REPLACE,
 								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
 			}
-			else if (aceSelf == null && aceEveryone == null && !canChange) {
-				d.getDacl().getAces().add(
+			else if ((aceSelf == null || aceEveryone == null) && !canChange) {
+				log.info("Changing NTSecurityDescriptor to prevent password changes");
+				if (aceSelf == null)
+					d.getDacl().getAces().add(
 						AceTypes.accessDeniedObjectAce(
 								new HashSet<>(),
 								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
 								UUID.fromString(PASSWORD_OBJECT),
 								(UUID) null,
 								com.hierynomus.msdtyp.SID.fromString(SID_SELF)));
-				d.getDacl().getAces().add(
+				if (aceEveryone != null)
+					d.getDacl().getAces().add(
 						AceTypes.accessDeniedObjectAce(
 								new HashSet<>(),
 								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
@@ -1516,7 +1520,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			key = SAM_ACCOUNT_NAME_ATTRIBUTE;
 
 		try {
-			
 			LDAPEntry entry = null;
 			if (isDebug())
 				log.info("BEGIN Searching for AD object");
@@ -1584,6 +1587,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			throws InternalErrorException, UnsupportedEncodingException, IOException, Exception, LDAPException {
 		log.info("Update existing object");
 		boolean modifyuserPrincipalName = false;
+		Boolean userCannotChangePassword = null;
 		if (changes != null || preUpdate(source, object, entry)) {
 			LinkedList<LDAPModification> modList = new LinkedList<LDAPModification>();
 			if (isDebug())
@@ -1592,7 +1596,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				Object ov = object.getAttribute(attribute);
 				if (ov != null && "".equals(ov))
 					ov = null;
-				if (!"dn".equals(attribute)
+				if ("userCannotChangePassword".equals(attribute)) {
+					userCannotChangePassword = ov != null && 
+							ov.toString().equalsIgnoreCase("true");
+				}
+				else if (!"dn".equals(attribute)
 						&& !"objectClass".equals(attribute)
 						&& !BASE_DN.equals(attribute)
 						&& !RELATIVE_DN.equals(attribute)) {
@@ -1718,8 +1726,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				debugModifications("Modifying object ", entry.getDN(),
 						mods);
 				conn.modify(entry.getDN(), mods);
-				applySamChangeForEnablePasswordChange(conn, accountName, entry.getDN(), mods);
+				if (userCannotChangePassword != null)
+					applySamChangeForEnablePasswordChange(conn, accountName, 
+							entry.getDN(), userCannotChangePassword);
 				postUpdate(source, object, entry);
+			} else {
+				if (userCannotChangePassword != null)
+					applySamChangeForEnablePasswordChange(conn, accountName, 
+							entry.getDN(), userCannotChangePassword);
+				postUpdate(source, object, entry);
+				
 			}
 
 			LdapName n = new LdapName(dn.toLowerCase());
@@ -1770,14 +1786,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 
-	private void applySamChangeForEnablePasswordChange(LDAPConnection conn, String accountName, String dn, LDAPModification[] mods) throws IOException, InternalErrorException, LDAPException {
+	private void applySamChangeForEnablePasswordChange(LDAPConnection conn, String accountName, 
+			String dn, Boolean userCannotChangePassword) 
+			throws IOException, InternalErrorException, LDAPException {
 		LDAPEntry ee = conn.read(dn, new String[] {"ntSecurityDescriptor"});
-		for (LDAPModification mod: mods) {
-			if (mod.getAttribute().getName().equals("userAccountControl")) {
-				long value = Long.parseLong(mod.getAttribute().getStringValue());
-				updateSamCanChangePassword(conn, ee, (value & ADS_UF_PASSWD_CANT_CHANGE) == 0);
-			}
-		}
+		updateSamCanChangePassword(conn, ee, !userCannotChangePassword);
 	}
 
 
