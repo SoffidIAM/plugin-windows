@@ -15,6 +15,12 @@ import java.util.UUID;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
+import com.hierynomus.msdtyp.AccessMask;
+import com.hierynomus.msdtyp.SecurityDescriptor;
+import com.hierynomus.msdtyp.ace.ACE;
+import com.hierynomus.msdtyp.ace.AceType;
+import com.hierynomus.msdtyp.ace.AceType2;
+import com.hierynomus.smb.SMBBuffer;
 import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPConnection;
 import com.novell.ldap.LDAPEntry;
@@ -42,6 +48,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		}
 		keys.add("dn");
 		keys.add("immutableId");
+		keys.add("userCannotChangePassword");
 		return keys;
 	}
 	
@@ -55,6 +62,8 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		else if ("lastLogonIgnoreServers".equals(key))
 			return true;
 		else if ("immutableId".equals(key))
+			return true;
+		else if ("userCannotChangePassword".equals(key))
 			return true;
 		else
 			return entry.getAttribute((String)key) != null;
@@ -86,6 +95,10 @@ public class LDAPExtensibleObject extends ExtensibleObject
 			if (r == null)
 				r = "";
 			return r;
+		}
+		
+		if ("userCannotChangePassword".equals(attribute)) {
+			return querySamCanChangePassword();
 		}
 		
 		if ("lastLogonStrict".equals(attribute))
@@ -134,6 +147,37 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		else
 			return att.getStringValueArray();
 	}
+
+	private boolean querySamCanChangePassword() {
+		try {
+			LDAPConnection conn = pool.getConnection();
+			try {
+				LDAPEntry ee = conn.read(entry.getDN(), new String[] {"ntSecurityDescriptor"});
+				SMBBuffer buff = new SMBBuffer(ee.getAttribute("nTSecurityDescriptor").getByteValue());
+				SecurityDescriptor d = SecurityDescriptor.read(buff);
+				ACE aceEveryone = null;
+				ACE aceSelf = null;
+				for (ACE ace: d.getDacl().getAces()) {
+					if (ace.getAceHeader().getAceType() == AceType.ACCESS_DENIED_OBJECT_ACE_TYPE &&
+							ace instanceof AceType2 &&
+							((AceType2)ace).getObjectType().toString()
+								.equals(CustomizableActiveDirectoryAgent.PASSWORD_OBJECT) &&
+							ace.getAccessMask() == AccessMask.FILE_WRITE_ATTRIBUTES.getValue()) {
+						if (ace.getSid().toString().equals(CustomizableActiveDirectoryAgent.SID_SELF)) 
+							aceSelf = ace;
+						if (ace.getSid().toString().equals(CustomizableActiveDirectoryAgent.SID_EVERYONE)) 
+							aceEveryone = ace;
+					}
+				}
+				return aceSelf != null && aceEveryone != null;
+			} finally {
+				pool.returnConnection();
+			}
+		} catch (Exception e) {
+			throw new RuntimeException("Error parsing ntSecurityDescriptor", e);
+		}
+	}
+
 
 	private String parseGUID(byte[] byteValue) {
 		return GUIDParser.format(byteValue);

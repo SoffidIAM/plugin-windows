@@ -255,9 +255,8 @@ public class CustomizableActiveDirectoryAgent extends CustomizableActiveDirector
 		    					debugEntry("Found AD object", entry.getDN(), entry.getAttributeSet());
 	    					ExtensibleObject r = new ExtensibleObject();
 	    					r.setObjectType(to.getObjectType());
-	    					for (LDAPAttribute key: (Collection<LDAPAttribute>)entry.getAttributeSet())
-	    					{
-	    						r.setAttribute(key.getName(), s.getAttribute(key.getName()));
+	    					for (String key: s.keySet()) {
+	    						r.setAttribute(key, s.getAttribute(key));
 	    					}
 	    					return r;
 	    				}

@@ -172,11 +172,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		GroupMgr, KerberosAgent, AuthoritativeIdentitySource2,
 		AccessLogMgr {
 
-	private static final String SID_EVERYONE = "S-1-1-0";
+	public static final String SID_EVERYONE = "S-1-1-0";
 
-	private static final String SID_SELF = "S-1-5-10";
+	public static final String SID_SELF = "S-1-5-10";
 
-	private static final String PASSWORD_OBJECT = "ab721a53-1e2f-11d0-9819-00aa0040529b";
+	public static final String PASSWORD_OBJECT = "ab721a53-1e2f-11d0-9819-00aa0040529b";
 
 	private static final String RELATIVE_DN = "relativeBaseDn";
 
@@ -1094,64 +1094,6 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
-	private void updateSamCanChangePassword(LDAPConnection conn, LDAPEntry ee, boolean canChange) throws IOException, InternalErrorException {
-		try {
-			SMBBuffer buff = new SMBBuffer(ee.getAttribute("nTSecurityDescriptor").getByteValue());
-			SecurityDescriptor d = SecurityDescriptor.read(buff);
-			ACE aceEveryone = null;
-			ACE aceSelf = null;
-			for (ACE ace: d.getDacl().getAces()) {
-				if (ace.getAceHeader().getAceType() == AceType.ACCESS_DENIED_OBJECT_ACE_TYPE &&
-						ace instanceof AceType2 &&
-						((AceType2)ace).getObjectType().toString().equals(PASSWORD_OBJECT) &&
-						ace.getAccessMask() == AccessMask.FILE_WRITE_ATTRIBUTES.getValue()) {
-					if (ace.getSid().toString().equals(SID_SELF)) 
-						aceSelf = ace;
-					if (ace.getSid().toString().equals(SID_EVERYONE)) 
-						aceEveryone = ace;
-				}
-			}
-			if ((aceSelf != null || aceEveryone != null) && canChange) {
-				d.getDacl().getAces().remove(aceSelf);
-				d.getDacl().getAces().remove(aceEveryone);
-				SMBBuffer outBuffer = new SMBBuffer();
-				d.write(outBuffer);
-				log.info("Changing NTSecurityDescriptor to allow password changes");
-				conn.modify(ee.getDN(), 
-						new LDAPModification(
-								LDAPModification.REPLACE,
-								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
-			}
-			else if ((aceSelf == null || aceEveryone == null) && !canChange) {
-				log.info("Changing NTSecurityDescriptor to prevent password changes");
-				if (aceSelf == null)
-					d.getDacl().getAces().add(
-						AceTypes.accessDeniedObjectAce(
-								new HashSet<>(),
-								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
-								UUID.fromString(PASSWORD_OBJECT),
-								(UUID) null,
-								com.hierynomus.msdtyp.SID.fromString(SID_SELF)));
-				if (aceEveryone != null)
-					d.getDacl().getAces().add(
-						AceTypes.accessDeniedObjectAce(
-								new HashSet<>(),
-								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
-								UUID.fromString(PASSWORD_OBJECT),
-								(UUID) null,
-								com.hierynomus.msdtyp.SID.fromString(SID_EVERYONE)));
-				SMBBuffer outBuffer = new SMBBuffer();
-				d.write(outBuffer);
-				conn.modify(ee.getDN(), 
-						new LDAPModification(
-								LDAPModification.REPLACE,
-								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
-			}
-		} catch (Exception e) {
-			throw new InternalErrorException("Error parsig ntSecurityDescriptor", e);
-		}
-	}
-
 	protected String searchDomainForDN(String dn) {
 		if ( ! multiDomain )
 			return mainDomain;
@@ -1790,7 +1732,61 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			String dn, Boolean userCannotChangePassword) 
 			throws IOException, InternalErrorException, LDAPException {
 		LDAPEntry ee = conn.read(dn, new String[] {"ntSecurityDescriptor"});
-		updateSamCanChangePassword(conn, ee, !userCannotChangePassword);
+		try {
+			SMBBuffer buff = new SMBBuffer(ee.getAttribute("nTSecurityDescriptor").getByteValue());
+			SecurityDescriptor d = SecurityDescriptor.read(buff);
+			ACE aceEveryone = null;
+			ACE aceSelf = null;
+			for (ACE ace: d.getDacl().getAces()) {
+				if (ace.getAceHeader().getAceType() == AceType.ACCESS_DENIED_OBJECT_ACE_TYPE &&
+						ace instanceof AceType2 &&
+						((AceType2)ace).getObjectType().toString().equals(PASSWORD_OBJECT) &&
+						ace.getAccessMask() == AccessMask.FILE_WRITE_ATTRIBUTES.getValue()) {
+					if (ace.getSid().toString().equals(SID_SELF)) 
+						aceSelf = ace;
+					if (ace.getSid().toString().equals(SID_EVERYONE)) 
+						aceEveryone = ace;
+				}
+			}
+			if ((aceSelf != null || aceEveryone != null) && ! userCannotChangePassword) {
+				d.getDacl().getAces().remove(aceSelf);
+				d.getDacl().getAces().remove(aceEveryone);
+				SMBBuffer outBuffer = new SMBBuffer();
+				d.write(outBuffer);
+				log.info("Changing NTSecurityDescriptor to allow password changes");
+				conn.modify(ee.getDN(), 
+						new LDAPModification(
+								LDAPModification.REPLACE,
+								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
+			}
+			else if ((aceSelf == null || aceEveryone == null) && userCannotChangePassword) {
+				log.info("Changing NTSecurityDescriptor to prevent password changes");
+				if (aceSelf == null)
+					d.getDacl().getAces().add(
+						AceTypes.accessDeniedObjectAce(
+								new HashSet<>(),
+								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
+								UUID.fromString(PASSWORD_OBJECT),
+								(UUID) null,
+								com.hierynomus.msdtyp.SID.fromString(SID_SELF)));
+				if (aceEveryone != null)
+					d.getDacl().getAces().add(
+						AceTypes.accessDeniedObjectAce(
+								new HashSet<>(),
+								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
+								UUID.fromString(PASSWORD_OBJECT),
+								(UUID) null,
+								com.hierynomus.msdtyp.SID.fromString(SID_EVERYONE)));
+				SMBBuffer outBuffer = new SMBBuffer();
+				d.write(outBuffer);
+				conn.modify(ee.getDN(), 
+						new LDAPModification(
+								LDAPModification.REPLACE,
+								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
+			}
+		} catch (Exception e) {
+			throw new InternalErrorException("Error parsig ntSecurityDescriptor", e);
+		}
 	}
 
 
