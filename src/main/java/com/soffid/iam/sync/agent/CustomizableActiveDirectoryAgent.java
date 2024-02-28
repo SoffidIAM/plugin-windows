@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -36,6 +37,7 @@ import java.util.Properties;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Stack;
+import java.util.UUID;
 
 import javax.naming.InvalidNameException;
 import javax.naming.ldap.LdapName;
@@ -55,8 +57,17 @@ import org.ietf.jgss.GSSManager;
 import org.ietf.jgss.GSSName;
 import org.ietf.jgss.Oid;
 
+import com.hierynomus.msdtyp.ACL;
+import com.hierynomus.msdtyp.AccessMask;
+import com.hierynomus.msdtyp.SecurityDescriptor;
+import com.hierynomus.msdtyp.ace.ACE;
+import com.hierynomus.msdtyp.ace.AceFlags;
+import com.hierynomus.msdtyp.ace.AceType;
+import com.hierynomus.msdtyp.ace.AceType2;
+import com.hierynomus.msdtyp.ace.AceTypes;
 import com.hierynomus.mssmb2.SMB2Dialect;
 import com.hierynomus.security.bc.BCSecurityProvider;
+import com.hierynomus.smb.SMBBuffer;
 import com.hierynomus.smbj.SMBClient;
 import com.hierynomus.smbj.SmbConfig;
 import com.hierynomus.smbj.auth.AuthenticationContext;
@@ -104,6 +115,7 @@ import com.soffid.iam.sync.intf.AccessLogMgr;
 import com.soffid.iam.sync.intf.KerberosAgent;
 import com.soffid.iam.sync.nas.NASManager;
 import com.soffid.msrpc.samr.SamrService;
+import com.soffid.msrpc.samr.UserInfo;
 
 import es.caib.seycon.agent.WindowsNTBDCAgent;
 import es.caib.seycon.ng.comu.Account;
@@ -159,6 +171,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		implements ExtensibleObjectMgr, UserMgr, ReconcileMgr2, RoleMgr,
 		GroupMgr, KerberosAgent, AuthoritativeIdentitySource2,
 		AccessLogMgr {
+
+	private static final String SID_EVERYONE = "S-1-1-0";
+
+	private static final String SID_SELF = "S-1-5-10";
+
+	private static final String PASSWORD_OBJECT = "ab721a53-1e2f-11d0-9819-00aa0040529b";
 
 	private static final String RELATIVE_DN = "relativeBaseDn";
 
@@ -1076,6 +1094,59 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		}
 	}
 
+	private void updateSamCanChangePassword(LDAPConnection conn, LDAPEntry ee, boolean canChange) throws IOException, InternalErrorException {
+		try {
+			SMBBuffer buff = new SMBBuffer(ee.getAttribute("nTSecurityDescriptor").getByteValue());
+			SecurityDescriptor d = SecurityDescriptor.read(buff);
+			ACE aceEveryone = null;
+			ACE aceSelf = null;
+			for (ACE ace: d.getDacl().getAces()) {
+				if (ace.getAceHeader().getAceType() == AceType.ACCESS_DENIED_OBJECT_ACE_TYPE &&
+						ace instanceof AceType2 &&
+						((AceType2)ace).getObjectType().toString().equals(PASSWORD_OBJECT) &&
+						ace.getAccessMask() == AccessMask.FILE_WRITE_ATTRIBUTES.getValue()) {
+					if (ace.getSid().toString().equals(SID_SELF)) 
+						aceSelf = ace;
+					if (ace.getSid().toString().equals(SID_EVERYONE)) 
+						aceEveryone = ace;
+				}
+			}
+			if (aceSelf != null && aceEveryone != null && canChange) {
+				d.getDacl().getAces().remove(aceSelf);
+				d.getDacl().getAces().remove(aceEveryone);
+				SMBBuffer outBuffer = new SMBBuffer();
+				d.write(outBuffer);
+				conn.modify(ee.getDN(), 
+						new LDAPModification(
+								LDAPModification.REPLACE,
+								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
+			}
+			else if (aceSelf == null && aceEveryone == null && !canChange) {
+				d.getDacl().getAces().add(
+						AceTypes.accessDeniedObjectAce(
+								new HashSet<>(),
+								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
+								UUID.fromString(PASSWORD_OBJECT),
+								(UUID) null,
+								com.hierynomus.msdtyp.SID.fromString(SID_SELF)));
+				d.getDacl().getAces().add(
+						AceTypes.accessDeniedObjectAce(
+								new HashSet<>(),
+								EnumSet.of(AccessMask.FILE_WRITE_ATTRIBUTES),
+								UUID.fromString(PASSWORD_OBJECT),
+								(UUID) null,
+								com.hierynomus.msdtyp.SID.fromString(SID_EVERYONE)));
+				SMBBuffer outBuffer = new SMBBuffer();
+				d.write(outBuffer);
+				conn.modify(ee.getDN(), 
+						new LDAPModification(
+								LDAPModification.REPLACE,
+								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
+			}
+		} catch (Exception e) {
+			throw new InternalErrorException("Error parsig ntSecurityDescriptor", e);
+		}
+	}
 
 	protected String searchDomainForDN(String dn) {
 		if ( ! multiDomain )
@@ -1647,6 +1718,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				debugModifications("Modifying object ", entry.getDN(),
 						mods);
 				conn.modify(entry.getDN(), mods);
+				applySamChangeForEnablePasswordChange(conn, accountName, entry.getDN(), mods);
 				postUpdate(source, object, entry);
 			}
 
@@ -1694,6 +1766,17 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			}
 			if (isDebug())
 				log.info("END");
+		}
+	}
+
+
+	private void applySamChangeForEnablePasswordChange(LDAPConnection conn, String accountName, String dn, LDAPModification[] mods) throws IOException, InternalErrorException, LDAPException {
+		LDAPEntry ee = conn.read(dn, new String[] {"ntSecurityDescriptor"});
+		for (LDAPModification mod: mods) {
+			if (mod.getAttribute().getName().equals("userAccountControl")) {
+				long value = Long.parseLong(mod.getAttribute().getStringValue());
+				updateSamCanChangePassword(conn, ee, (value & ADS_UF_PASSWD_CANT_CHANGE) == 0);
+			}
 		}
 	}
 
