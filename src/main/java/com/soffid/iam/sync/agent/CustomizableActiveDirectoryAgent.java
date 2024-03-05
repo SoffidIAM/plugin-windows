@@ -2004,10 +2004,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 							log.info("About to recursively remove "+d);
 							LDAPConstraints c = conn.getConstraints();
 							LDAPControl recursivelyDelete = new LDAPControl ("1.2.840.113556.1.4.805", true, null);
-							LDAPControl recursivelyDeleteEx = new LDAPControl ("1.2.840.113556.1.4.2204", true, "16384".getBytes());
+//							LDAPControl recursivelyDeleteEx = new LDAPControl ("1.2.840.113556.1.4.2204", true, "16384".getBytes());
 							c.setControls(new LDAPControl[] {
-								recursivelyDelete,
-								recursivelyDeleteEx
+								recursivelyDelete
+//								recursivelyDeleteEx
 							});
 							try {
 								conn.delete(d, c);
