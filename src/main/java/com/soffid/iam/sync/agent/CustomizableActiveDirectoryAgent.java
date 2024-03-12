@@ -1741,7 +1741,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				throw new InternalErrorException("Cannot retrieve ntSecurityDescriptor");
 			}
 			SMBBuffer buff = new SMBBuffer(attribute.getByteValue());
-			d = SecurityDescriptor.read(buff);
+			SecurityDescriptor d = SecurityDescriptor.read(buff);
 			for (ACE ace: d.getDacl().getAces()) {
 				if (ace.getAceHeader().getAceType() == AceType.ACCESS_DENIED_OBJECT_ACE_TYPE &&
 						ace instanceof AceType2 &&
