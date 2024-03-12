@@ -60,6 +60,7 @@ import org.ietf.jgss.Oid;
 import com.hierynomus.msdtyp.ACL;
 import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.msdtyp.SecurityDescriptor;
+import com.hierynomus.msdtyp.SecurityDescriptor.Control;
 import com.hierynomus.msdtyp.ace.ACE;
 import com.hierynomus.msdtyp.ace.AceFlags;
 import com.hierynomus.msdtyp.ace.AceType;
@@ -1731,12 +1732,16 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	private void applySamChangeForEnablePasswordChange(LDAPConnection conn, String accountName, 
 			String dn, Boolean userCannotChangePassword) 
 			throws IOException, InternalErrorException, LDAPException {
-		LDAPEntry ee = conn.read(dn, new String[] {"ntSecurityDescriptor"});
+		LDAPEntry ee = conn.read(dn, new String[] {"nTSecurityDescriptor"});
 		try {
-			SMBBuffer buff = new SMBBuffer(ee.getAttribute("nTSecurityDescriptor").getByteValue());
-			SecurityDescriptor d = SecurityDescriptor.read(buff);
+			final LDAPAttribute attribute = ee.getAttribute("nTSecurityDescriptor");
 			ACE aceEveryone = null;
 			ACE aceSelf = null;
+			if (attribute == null) {
+				throw new InternalErrorException("Cannot retrieve ntSecurityDescriptor");
+			}
+			SMBBuffer buff = new SMBBuffer(attribute.getByteValue());
+			d = SecurityDescriptor.read(buff);
 			for (ACE ace: d.getDacl().getAces()) {
 				if (ace.getAceHeader().getAceType() == AceType.ACCESS_DENIED_OBJECT_ACE_TYPE &&
 						ace instanceof AceType2 &&

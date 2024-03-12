@@ -152,7 +152,10 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		try {
 			LDAPConnection conn = pool.getConnection();
 			try {
-				LDAPEntry ee = conn.read(entry.getDN(), new String[] {"ntSecurityDescriptor"});
+				LDAPEntry ee = conn.read(entry.getDN(), new String[] {"nTSecurityDescriptor"});
+				LDAPAttribute att = ee.getAttribute("nTSecurityDescriptor");
+				if (att == null)
+					return true;
 				SMBBuffer buff = new SMBBuffer(ee.getAttribute("nTSecurityDescriptor").getByteValue());
 				SecurityDescriptor d = SecurityDescriptor.read(buff);
 				ACE aceEveryone = null;
@@ -174,7 +177,7 @@ public class LDAPExtensibleObject extends ExtensibleObject
 				pool.returnConnection();
 			}
 		} catch (Exception e) {
-			throw new RuntimeException("Error parsing ntSecurityDescriptor", e);
+			return true;
 		}
 	}
 
