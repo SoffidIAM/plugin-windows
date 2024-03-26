@@ -1680,6 +1680,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				postUpdate(source, object, entry);
 				
 			}
+			
+			if (object.get("dn") != null)
+				dn = (String) object.get("dn"); // Distinguished name modified by pre-update trigger
 
 			LdapName n = new LdapName(dn.toLowerCase());
 			LdapName n2 = new LdapName(entry.getDN().toLowerCase());
@@ -1732,7 +1735,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	private void applySamChangeForEnablePasswordChange(LDAPConnection conn, String accountName, 
 			String dn, Boolean userCannotChangePassword) 
 			throws IOException, InternalErrorException, LDAPException {
-		LDAPEntry ee = conn.read(dn, new String[] {"nTSecurityDescriptor"});
+		LDAPSearchConstraints c = conn.getSearchConstraints();
+		c.setControls(new LDAPControl("3.1.1.3.4.1.11", true, "7".getBytes())); // LDAP_SERVER_SD_FLAGS_OID"
+		LDAPEntry ee = conn.read(dn, new String[] {"nTSecurityDescriptor"}, c);
 		try {
 			final LDAPAttribute attribute = ee.getAttribute("nTSecurityDescriptor");
 			ACE aceEveryone = null;
