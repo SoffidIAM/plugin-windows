@@ -23,6 +23,7 @@ import com.hierynomus.msdtyp.ace.AceType2;
 import com.hierynomus.smb.SMBBuffer;
 import com.novell.ldap.LDAPAttribute;
 import com.novell.ldap.LDAPConnection;
+import com.novell.ldap.LDAPControl;
 import com.novell.ldap.LDAPEntry;
 import com.novell.ldap.LDAPException;
 import com.novell.ldap.LDAPReferralException;
@@ -152,7 +153,9 @@ public class LDAPExtensibleObject extends ExtensibleObject
 		try {
 			LDAPConnection conn = pool.getConnection();
 			try {
-				LDAPEntry ee = conn.read(entry.getDN(), new String[] {"nTSecurityDescriptor"});
+				LDAPSearchConstraints c = conn.getSearchConstraints();
+				c.setControls(new LDAPControl("1.2.840.113556.1.4.801", true, new byte[] {48, 3, 2, 1, 7})); // LDAP_SERVER_SD_FLAGS_OID"
+				LDAPEntry ee = conn.read(entry.getDN(), new String[] {"nTSecurityDescriptor"}, c);
 				LDAPAttribute att = ee.getAttribute("nTSecurityDescriptor");
 				if (att == null)
 					return true;
