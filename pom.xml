@@ -50,6 +50,11 @@
 			<artifactId>jcifs</artifactId>
 			<version>1.3.17</version>
 		</dependency>
+		<dependency>
+			<groupId>com.soffid.iam.sync</groupId>
+			<artifactId>pwsh-tool</artifactId>
+			<version>1.0.1</version>
+		</dependency>
 	</dependencies>
 	<licenses>
 		<license>
@@ -138,6 +143,9 @@
 									<include>com.hierynomus:asn-one</include>
 									<include>ch.poweredge.ntlmv2-auth:ntlmv2-lib</include>
 									<include>jcifs:jcifs</include>
+									<include>com.soffid.iam.sync:pwsh-tool</include>
+									<include>io.cloudsoft.windows:winrm4j-client</include>
+									<include>io.cloudsoft.windows:winrm4j</include>
 								</includes>
 							</artifactSet>
 						</configuration>
@@ -182,10 +190,10 @@
 			<id>soffid-open</id>
 			<url>https://download.soffid.com/maven</url>
 		</repository>
-		<repository>
-			<id>soffid</id>
-			<url>https://archiva.internal.soffid.com/repository/soffid</url>
-		</repository>
+    <repository>
+      <id>soffid-private</id>
+      <url>${soffid.private.deploy.url}</url>
+    </repository>
 	</repositories>
 	<distributionManagement>
 		<repository>
