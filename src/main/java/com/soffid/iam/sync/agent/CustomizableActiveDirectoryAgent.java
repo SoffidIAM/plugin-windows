@@ -1077,7 +1077,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				    		if (debugEnabled)
 				    			log.info("Setting password for user "+accountName+" at SAM domain "+n.getName());
 							sam.setPasswordEx(userHandle, password.getPassword(), mustchange);
-							return;
+//							return;
 				    	} catch (RPCException e) {
 				    		if (e.getErrorCode() != null && e.getErrorCode().is( 0xC000006C) ) {
 				    			throw new InternalErrorException("The password is not accepted due to policy restrictions", e);
@@ -1359,7 +1359,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			String name = (String) object.getAttribute("cn");
 			if (name == null) name = "";
 			else name = name.trim();
-			name = "cn=" + name.replaceAll(",", "\\\\,");
+			name = "cn=" + name.replace("\\", "\\\\").replace(",", "\\,").replace("#", "\\#");
 			if (object.getAttribute(RELATIVE_DN) != null)
 			{
 				String base = getAccountDomain(accountName, dn);
@@ -1736,7 +1736,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			String dn, Boolean userCannotChangePassword) 
 			throws IOException, InternalErrorException, LDAPException {
 		LDAPSearchConstraints c = conn.getSearchConstraints();
-		c.setControls(new LDAPControl("3.1.1.3.4.1.11", true, "7".getBytes())); // LDAP_SERVER_SD_FLAGS_OID"
+		c.setControls(new LDAPControl("1.2.840.113556.1.4.801", true, new byte[] {48, 3, 2, 1, 7})); // LDAP_SERVER_SD_FLAGS_OID"
 		LDAPEntry ee = conn.read(dn, new String[] {"nTSecurityDescriptor"}, c);
 		try {
 			final LDAPAttribute attribute = ee.getAttribute("nTSecurityDescriptor");
@@ -1792,7 +1792,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				conn.modify(ee.getDN(), 
 						new LDAPModification(
 								LDAPModification.REPLACE,
-								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())));
+								new LDAPAttribute("nTSecurityDescriptor", outBuffer.array())),
+								c);
 			}
 		} catch (Exception e) {
 			throw new InternalErrorException("Error parsig ntSecurityDescriptor", e);
