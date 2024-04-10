@@ -54,11 +54,11 @@ import es.caib.seycon.ng.exception.InternalErrorException;
 
 public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2, ExtensibleObjectMgr {
 	final SMBClient smbClient = new SMBClient();
-	private String user;
-	private Password password;
+	protected String user;
+	protected Password password;
 	protected String server;
 	private boolean onlyPassword;
-	private String domain;
+	protected String domain;
 	private Connection smbConnection;
 
 
