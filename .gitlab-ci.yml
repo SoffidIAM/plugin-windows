@@ -6,7 +6,8 @@ variables:
   # when running from the command line.
   # `installAtEnd` and `deployAtEnd` are only effective with recent version of the corresponding plugins.
   MAVEN_CERT_OPTS: "-Djavax.net.ssl.keyStore=/tmp/keystore.p12  -Djavax.net.ssl.keyStoreType=pkcs12 -Djavax.net.ssl.keyStorePassword=$KEYSTORE_PASSWORD"
-  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end --show-version"
+  MAVEN_CLI_OPTS2: "--batch-mode --errors --fail-at-end --show-version"
+  MAVEN_CLI_OPTS: "--batch-mode -X"
 
 # This template uses jdk8 for verifying and deploying images
 image: maven:3.8.5-openjdk-8
@@ -55,7 +56,7 @@ maven_compile:
     - 'base64 -d $KEYSTORE >/tmp/keystore.p12'
     - mkdir "$HOME/.docker"
     - cp $DOCKER_CONFIG_JSON "$HOME/.docker/config.json"
-    - mvn package $MAVEN_CLI_OPTS  $MAVEN_CERT_OPTS -s $DEPLOYER_SETTINGS  -Darguments="$MAVEN_CERT_OPTS"
+    - mvn package $MAVEN_CLI_OPTS  $MAVEN_CERT_OPTS -s $DEPLOYER_SETTINGS  
 
 maven_release:
   stage: deploy
