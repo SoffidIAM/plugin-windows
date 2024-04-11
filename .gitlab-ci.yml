@@ -70,7 +70,7 @@ release_job_mvn:
   script: 
     - links=$(
       first="true" ;
-      mvn -q -Dexec.executable='echo' -Dexec.args='${project.groupId} ${project.version} ${project.artifactId} ${project.packaging}' exec:exec | 
+      mvn $MAVEN_CLI_OPTS  $MAVEN_CERT_OPTS -s $DEPLOYER_SETTINGS -q -Dexec.executable='echo' -Dexec.args='${project.groupId} ${project.version} ${project.artifactId} ${project.packaging}' exec:exec | 
       while read a b c d ;
       do
         if [[ "$first" == "false" ]] ;
