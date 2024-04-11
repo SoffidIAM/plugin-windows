@@ -192,7 +192,7 @@
 		</repository>
     <repository>
       <id>soffid-private</id>
-      <url>${soffid.private.deploy.url}</url>
+      <url>https://archiva.internal.soffid.com/private</url>
     </repository>
 	</repositories>
 	<distributionManagement>
