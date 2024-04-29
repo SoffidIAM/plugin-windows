@@ -94,6 +94,7 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 
 	private List<HostService> getPowerShellServices(String powerShellAgent) throws InternalErrorException, JSONException, PowershellException {
 		String userName = domain.equals(server) ? user: domain+"\\"+user; 
+		log.info("Connecting to "+server+" with "+userName+" / "+password.toString());
 		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
 				server, userName, password.getPassword());
 		List<HostService> services = new LinkedList<>();

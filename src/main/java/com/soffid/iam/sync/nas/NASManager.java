@@ -2,6 +2,8 @@ package com.soffid.iam.sync.nas;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.rmi.RemoteException;
 import java.util.EnumSet;
 import java.util.HashSet;
@@ -12,6 +14,9 @@ import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.logging.LogFactory;
+import org.apache.cxf.interceptor.Fault;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import com.hierynomus.msdtyp.AccessMask;
 import com.hierynomus.msdtyp.SecurityDescriptor;
@@ -56,12 +61,16 @@ import com.rapid7.client.dcerpc.msvcctl.dto.IServiceConfigInfo;
 import com.rapid7.client.dcerpc.msvcctl.dto.ServiceConfigInfo;
 import com.rapid7.client.dcerpc.msvcctl.dto.ServiceHandle;
 import com.rapid7.client.dcerpc.msvcctl.dto.ServiceManagerHandle;
+import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceError;
+import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceStartType;
 import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceState;
 import com.rapid7.client.dcerpc.msvcctl.dto.enums.ServiceType;
 import com.rapid7.client.dcerpc.transport.RPCTransport;
 import com.rapid7.client.dcerpc.transport.SMBTransportFactories;
 import com.soffid.iam.api.Account;
 import com.soffid.iam.api.HostService;
+import com.soffid.iam.pwsh.PowershellException;
+import com.soffid.iam.remote.RemoteServiceLocator;
 import com.soffid.iam.service.ApplicationService;
 import com.soffid.iam.service.DispatcherService;
 import com.soffid.iam.service.GroupService;
@@ -1054,78 +1063,205 @@ public class NASManager {
 		this.host = host;
 	}
 
-	
-	public List<HostService> getServices(List<String> hosts) throws IOException {
+	public List<HostService> getHostServices(List<String> hosts) throws RemoteException, InternalErrorException {
 		List<HostService> services = new LinkedList<>();
 		for (String host: hosts) {
-			try (final Connection smbConnection = smbClient.connect(host)) {
-				Session session;
-				final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
-				session = smbConnection.authenticate(smbAuthenticationContext);
-			    final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
-			    ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
-			    ServiceManagerHandle smh = svc.openServiceManagerHandle();
-			    
-			    List<EnumServiceStatus> s = svc.enumServicesStatus(smh, ServiceType.WIN32_OWN_PROCESS.getValue()+
-			    			ServiceType.WIN32_SHARE_PROCESS.getValue(), ServiceState.STATE_ALL);
-			    for (EnumServiceStatus service: s) {
-			    	System.out.println(service.getServiceName()+" - "+service.getDisplayName());
-			    	try {
-			    		ServiceHandle h = svc.openServiceHandle(smh, service.getServiceName());
-				    	IServiceConfigInfo config = svc.queryServiceConfig(h);
-				    	System.out.println("   "+config.getServiceStartName());
-				    	svc.closeServiceHandle(h);
-				    	HostService hostService = new HostService();
-				    	hostService.setHostName(host);
-				    	hostService.setService(service.getServiceName());
-				    	hostService.setAccountName(config.getServiceStartName());
-				    	services.add(hostService);
-			    	} catch (RPCException e) {
-			    		
-			    	} 
-			    }
-			    smbConnection.close();
+			try {
+				String powerShellAgent = new RemoteServiceLocator()
+						.getServerService()
+						.getConfig("soffid.discovery.powershell");
+				if ("false".equals(powerShellAgent)) {
+					return getNativeServices();
+				} else {
+					try {
+						return getPowerShellServices(host);
+					} catch (Fault | IllegalStateException f) {
+						if (f instanceof IllegalStateException ||
+								f.getCause() instanceof ConnectException ||
+								f.getCause() instanceof NoRouteToHostException) {
+							return getNativeServices();
+						}
+						else
+							throw f;
+					}
+				}
+			} catch (Exception e) {
+				throw new InternalErrorException("Error fetching services", e);
 			}
 		}
 		return services;
 	}
 
-	public void setServicePassword(String service, com.soffid.iam.api.Password password2) throws InternalErrorException {
+	protected List<HostService> getNativeServices() throws IOException, InternalErrorException {
+		List<HostService> services = new LinkedList<>();
+		try (final Connection smbConnection = smbClient.connect(host)) {
+			Session session;
+			final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+			session = smbConnection.authenticate(smbAuthenticationContext);
+		    final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
+		    ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
+		    ServiceManagerHandle smh = svc.openServiceManagerHandle();
+		    
+		    List<EnumServiceStatus> s = svc.enumServicesStatus(smh, ServiceType.WIN32_OWN_PROCESS.getValue()+
+		    			ServiceType.WIN32_SHARE_PROCESS.getValue(), ServiceState.STATE_ALL);
+		    for (EnumServiceStatus service: s) {
+		    	try {
+		    		ServiceHandle h = svc.openServiceHandle(smh, service.getServiceName());
+			    	IServiceConfigInfo config = svc.queryServiceConfig(h);
+			    	svc.closeServiceHandle(h);
+			    	HostService hostService = new HostService();
+			    	hostService.setHostName(host);
+			    	hostService.setService(service.getServiceName());
+			    	hostService.setAccountName(config.getServiceStartName());
+			    	services.add(hostService);
+		    	} catch (RPCException e) {
+		    		
+		    	} 
+		    }
+		    smbConnection.close();
+		}
+		return services;
+	}
+
+	private List<HostService> getPowerShellServices(String server) throws InternalErrorException, JSONException, PowershellException {
+		log.info("Connecting to "+server);
+		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
+				server, domain+"\\"+user, password.getPassword());
+		List<HostService> services = new LinkedList<>();
+		// Services
+		for (JSONObject row:  s.powershell( 
+				"get-wmiobject Win32_Service | select-object Name,StartName")) {
+			String runas = (String) row.get("StartName");
+			if (runas != null &&
+				      ! "SYSTEM".equalsIgnoreCase(runas) && 
+			      ! "LocalSystem".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\NetworkService".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\LocalService".equalsIgnoreCase(runas) &&
+			      ! "".equals(runas) && runas != null &&
+			      ! runas.endsWith("$")) {
+				HostService hs = new HostService();
+				hs.setAccountName(runas);
+				hs.setService((String) row.get("Name"));
+				hs.setHostName(server);
+				services.add(hs);
+			}
+		}
+		// Scheduled tasks
+		for (JSONObject row:  s.powershell( 
+				"get-scheduledTask | select-object TaskPath, TaskName,@{name='runas';expression={$_.Principal.UserId}}")) {
+			String runas = (String) row.get("runas");
+			if (runas != null &&
+				      ! "SYSTEM".equalsIgnoreCase(runas) && 
+			      ! "LocalSystem".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\NetworkService".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\LocalService".equalsIgnoreCase(runas) &&
+			      ! "".equals(runas) && runas != null &&
+			      ! runas.endsWith("$")) {
+				HostService hs = new HostService();
+				hs.setAccountName(runas);
+				hs.setService("TASK: "+(String) row.get("TaskPath")+row.get("TaskName"));
+				hs.setHostName(server);
+				services.add(hs);
+			}
+		}
+		return services;
+	}
+
+	private String quote(String t) {
+		return t.replace("'", "''");
+	}
+
+	private void setPowershellServicePassword(String host, String service,
+			com.soffid.iam.api.Password password) throws JSONException, PowershellException {
+		String userName = domain+"\\"+user; 
+		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
+				host, userName, this.password.getPassword());
+		// Services
+		for (JSONObject row:  s.powershell( 
+				"get-wmiobject Win32_Service | select-object Name,StartName")) {
+			String runas = (String) row.get("StartName");
+			String name = row.getString("Name");
+			if ( name.equals(service) && 
+				  runas != null &&
+				  ! "SYSTEM".equalsIgnoreCase(runas) && 
+			      ! "LocalSystem".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\NetworkService".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\LocalService".equalsIgnoreCase(runas) &&
+			      ! "".equals(runas) && runas != null &&
+			      ! runas.endsWith("$")) {
+				s.shell("sc config \""+name+"\" \"obj="+runas+"\" \"password="+password.getPassword()+"\" type=own");
+			}
+		}
+		// Scheduled tasks
+		for (JSONObject row:  s.powershell( 
+				"get-scheduledTask | select-object TaskPath, TaskName,@{name='runas';expression={$_.Principal.UserId}}")) {
+			String runas = (String) row.get("runas");
+			String name = "TASK: "+(String) row.get("TaskPath")+row.get("TaskName");
+			if (name.equals(service) &&
+				runas != null &&
+				  ! "SYSTEM".equalsIgnoreCase(runas) && 
+			      ! "LocalSystem".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\NetworkService".equalsIgnoreCase(runas) &&
+			      ! "NT AUTHORITY\\LocalService".equalsIgnoreCase(runas) &&
+			      ! "".equals(runas) && runas != null &&
+			      ! runas.endsWith("$")) {
+				s.powershell("set-scheduledTask -TaskName '"+
+						quote(row.getString("TaskName"))+"' -TaskPath '"+
+						quote(row.getString("TaskPath"))+"' -User '"+quote(runas)+"' "
+						+ "-Password '"+quote(password.getPassword())+"'");
+			}
+		}
+	}
+
+	public void setServicePassword(List<String> domainControllers, String service, 
+			com.soffid.iam.api.Password password2) throws InternalErrorException {
 		IOException ex = null;
-		for (String hn: host.split("[ ,]+")) {
-			try (final Connection smbConnection = smbClient.connect(hn)) {
-			    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
-			    final Session session = smbConnection.authenticate(smbAuthenticationContext);
-				try {
-					final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
-					ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
-					ServiceManagerHandle smh = svc.openServiceManagerHandle();
-					
-					ServiceHandle h = svc.openServiceHandle(smh, service);
-					IServiceConfigInfo config = svc.queryServiceConfig(h);
-					ServiceConfigInfo config2 = new ServiceConfigInfo(
-							config.getServiceType(),
-							config.getStartType(),
-							config.getErrorControl(),
-							config.getBinaryPathName(), 
-							config.getLoadOrderGroup(),
-							config.getTagId(),
-							config.getDependencies(),
-							config.getServiceStartName(),
-							config.getDisplayName(),
-							password.getPassword());
-					
-					svc.changeServiceConfig(h, config2);
-					svc.closeServiceHandle(h);
-					return;
-				} finally {
-					session.close();
+		for (String host: domainControllers) {
+			try {
+				String powerShellAgent = new RemoteServiceLocator().getServerService()
+						.getConfig("soffid.discovery.powershell");
+				if ("false".equals(powerShellAgent)) {
+					setNativeServicePassword(host, service, password2);
+				} else {
+					setPowershellServicePassword(host, service, password2);
 				}
-			} catch (IOException e) {
-				ex = e;
+			} catch (Exception e) {
+				throw new InternalErrorException("Error fetching services", e);
 			}
 		}
 		throw new InternalErrorException("Error fetching services", ex);
+	}
+
+	private void setNativeServicePassword(String host, String service, com.soffid.iam.api.Password password2) throws IOException {
+		try (final Connection smbConnection = smbClient.connect(host)) {
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+			try {
+				final RPCTransport transport2 = SMBTransportFactories.SVCCTL.getTransport(session);
+				ServiceControlManagerService svc = new ServiceControlManagerService(transport2, session);
+				ServiceManagerHandle smh = svc.openServiceManagerHandle();
+				
+				ServiceHandle h = svc.openServiceHandle(smh, service);
+				IServiceConfigInfo config = svc.queryServiceConfig(h);
+				ServiceConfigInfo config2 = new ServiceConfigInfo(
+						config.getServiceType(),
+						config.getStartType(),
+						config.getErrorControl(),
+						config.getBinaryPathName(), 
+						config.getLoadOrderGroup(),
+						config.getTagId(),
+						config.getDependencies(),
+						config.getServiceStartName(),
+						config.getDisplayName(),
+						password2.getPassword());
+				
+				svc.changeServiceConfig(h, config2);
+				svc.closeServiceHandle(h);
+				return;
+			} finally {
+				session.close();
+			}
+		}
 	}
 
 	public String[] parseAuthData ( Map<String, Object> params) {
