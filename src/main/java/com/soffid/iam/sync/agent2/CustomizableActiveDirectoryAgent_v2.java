@@ -24,6 +24,8 @@ public class CustomizableActiveDirectoryAgent_v2 extends CustomizableActiveDirec
 		List<String> domainControllers = new LinkedList<>();
 		for ( String domainName: this.domainToShortName.keySet()) {
 			LDAPPool pool = getPool(domainName);
+			if (pool.getChildPools() == null || pool.getChildPools().isEmpty())
+				createChildPools(pool);
 			for (LDAPPool child: pool.getChildPools()) {
 				domainControllers.add(child.getLdapHost());
 			}
@@ -41,6 +43,8 @@ public class CustomizableActiveDirectoryAgent_v2 extends CustomizableActiveDirec
 		List<String> domainControllers = new LinkedList<>();
 		for ( String domainName: this.domainToShortName.keySet()) {
 			LDAPPool pool = getPool(domainName);
+			if (pool.getChildPools() == null || pool.getChildPools().isEmpty())
+				createChildPools(pool);
 			for (LDAPPool child: pool.getChildPools()) {
 				domainControllers.add(child.getLdapHost());
 			}

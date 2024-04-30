@@ -645,7 +645,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		
 	}
 
-    private void createChildPools(LDAPPool pool2) throws InternalErrorException {
+    protected void createChildPools(LDAPPool pool2) throws InternalErrorException {
 		LDAPConnection conn = null;
 		LinkedList<LDAPPool> children = new LinkedList<LDAPPool>();
 		String[] excluded = excludeDomains == null ? new String[0] : excludeDomains.split(" +");
