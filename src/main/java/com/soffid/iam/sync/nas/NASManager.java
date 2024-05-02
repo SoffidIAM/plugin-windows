@@ -1094,6 +1094,7 @@ public class NASManager {
 
 	protected List<HostService> getNativeServices() throws IOException, InternalErrorException {
 		List<HostService> services = new LinkedList<>();
+		connect();
 		try (final Connection smbConnection = smbClient.connect(host)) {
 			Session session;
 			final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
@@ -1126,7 +1127,7 @@ public class NASManager {
 	private List<HostService> getPowerShellServices(String server) throws InternalErrorException, JSONException, PowershellException {
 		log.info("Connecting to "+server);
 		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
-				server, domain+"\\"+user, password.getPassword());
+				server, user, password.getPassword());
 		List<HostService> services = new LinkedList<>();
 		// Services
 		for (JSONObject row:  s.powershell( 
@@ -1233,6 +1234,7 @@ public class NASManager {
 	}
 
 	private void setNativeServicePassword(String host, String service, com.soffid.iam.api.Password password2) throws IOException {
+		connect();
 		try (final Connection smbConnection = smbClient.connect(host)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
