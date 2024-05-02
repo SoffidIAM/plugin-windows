@@ -4014,6 +4014,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public void updateUserPassword(String userName, Usuari userData,
 			Password password, boolean mustchange) throws RemoteException,
 			InternalErrorException {
+		if (validateUserPassword(userName, password)) {
+			log.info("Ignoring password change");
+			return;
+		}
 		Account account = getServer().getAccountInfo(userName, getDispatcher().getCodi()); 
 		
 		ExtensibleObjects objects = null;
