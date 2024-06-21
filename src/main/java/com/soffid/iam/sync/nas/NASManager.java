@@ -99,19 +99,25 @@ public class NASManager {
 	private Connection adConnection;
 	private SmbConfig config;
 	private Map<String, String[]> domainControllers;
+	private boolean debug;
 
 	
-	public NASManager (String domain, String host, String user, Password password, Map<String,String[]> domainControllers) throws IOException
+	public NASManager (String domain, String host, String user, Password password, 
+			Map<String,String[]> domainControllers,
+			boolean debug) throws IOException
 	{
+		this.debug = debug;
 		this.domain = domain;
 		this.user = user;
 		this.password = password;
 		this.host = host;
 		this.domainControllers = domainControllers;
-		log.info("Initalizing NAS Manager");
-		log.info("Domain: "+domain);
-		log.info("User:   "+user);
-		log.info("Server: "+host);
+		if (debug) {
+			log.info("Initalizing NAS Manager");
+			log.info("Domain: "+domain);
+			log.info("User:   "+user);
+			log.info("Server: "+host);
+		}
 		disconnect();
 	}
 	
@@ -344,10 +350,11 @@ public class NASManager {
 	
 	public List<String[]> listShares(String server,
 			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
-		log.info("User:     "+auth[1]);
-		log.info("Domain:   "+auth[0]);
-		log.info("Server:   "+server);
-
+		if (debug) {
+			log.info("User:     "+auth[1]);
+			log.info("Domain:   "+auth[0]);
+			log.info("Server:   "+server);
+		}
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -363,11 +370,13 @@ public class NASManager {
 	}
 
 	private long getVolumeSize(String server, String shareName, PrintWriter printWriter, String[] auth) throws IOException {
-		log.info("User:     "+auth[1]);
-		log.info("Domain:   "+auth[0]);
-		log.info("Server:   "+server);
-		log.info("Share:    "+shareName);
-
+		if (debug) {
+			log.info("User:     "+auth[1]);
+			log.info("Domain:   "+auth[0]);
+			log.info("Server:   "+server);
+			log.info("Share:    "+shareName);
+		}
+		
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -381,11 +390,12 @@ public class NASManager {
 	}
 
 	private long getFreeSize(String server, String shareName, PrintWriter printWriter, String[] auth) throws IOException {
-		log.info("User:     "+auth[1]);
-		log.info("Domain:   "+auth[0]);
-		log.info("Server:   "+server);
-		log.info("Share:    "+shareName);
-
+		if (debug) {
+			log.info("User:     "+auth[1]);
+			log.info("Domain:   "+auth[0]);
+			log.info("Server:   "+server);
+			log.info("Share:    "+shareName);
+		}
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -401,11 +411,13 @@ public class NASManager {
 
 	public void createShare(String server, String shareName, String path,
 			PrintWriter out, String[] auth) throws IOException, InternalErrorException {
-		log.info("User:     "+auth[1]);
-		log.info("Domain:   "+auth[0]);
-		log.info("Server:   "+server);
-		log.info("Share:    "+shareName);
+		if (debug) {
+			log.info("User:     "+auth[1]);
+			log.info("Domain:   "+auth[0]);
+			log.info("Server:   "+server);
+			log.info("Share:    "+shareName);
 
+		}
 		try (final Connection smbConnection = smbClient.connect(server)) {
 		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(auth[1], auth[2].toCharArray(), auth[0]);
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
@@ -896,9 +908,11 @@ public class NASManager {
 	}
 
 	public void connect() throws IOException {
-		log.info("User:     "+user);
-		log.info("Domain:   "+domain);
-		log.info("Server:   "+host);
+		if (debug) {
+			log.info("User:     "+user);
+			log.info("Domain:   "+domain);
+			log.info("Server:   "+host);
+		}
 
 		if (smbClient == null)
 		{
@@ -978,7 +992,7 @@ public class NASManager {
 		SMBClient client = null;
 		Connection conn = null;
 		Session session = adSession;
-		log.info("Querying SID "+samAccountName+" / "+domainControllers);
+		if (debug) log.info("Querying SID "+samAccountName+" / "+domainControllers);
 		if (i >= 0)
 		{
 			roleDomain = samAccountName.substring(0,  i);
@@ -990,7 +1004,7 @@ public class NASManager {
 						conn = adClient.connect(dcn);
 						final AuthenticationContext adAuthenticationContext = new AuthenticationContext(user, password.getPassword().toCharArray(), domain);
 						session = conn.authenticate(adAuthenticationContext);
-						log.info("Querying SID "+samAccountName+" at "+dcn);
+						if (debug) log.info("Querying SID "+samAccountName+" at "+dcn);
 						break;
 					} catch (Exception e) {
 						// Cannot connect
@@ -1125,7 +1139,7 @@ public class NASManager {
 	}
 
 	private List<HostService> getPowerShellServices(String server) throws InternalErrorException, JSONException, PowershellException {
-		log.info("Connecting to "+server);
+		if (debug) log.info("Connecting to "+server);
 		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
 				server, user, password.getPassword());
 		List<HostService> services = new LinkedList<>();
@@ -1176,7 +1190,7 @@ public class NASManager {
 			com.soffid.iam.api.Password password) throws JSONException, PowershellException {
 		String userName = domain+"\\"+user; 
 		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
-				host, userName, this.password.getPassword());
+				host, user, this.password.getPassword());
 		// Services
 		for (JSONObject row:  s.powershell( 
 				"get-wmiobject Win32_Service | select-object Name,StartName")) {
@@ -1230,7 +1244,7 @@ public class NASManager {
 				throw new InternalErrorException("Error fetching services", e);
 			}
 		}
-		throw new InternalErrorException("Error fetching services", ex);
+		
 	}
 
 	private void setNativeServicePassword(String host, String service, com.soffid.iam.api.Password password2) throws IOException {

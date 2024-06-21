@@ -93,10 +93,24 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 	}
 
 	private List<HostService> getPowerShellServices(String powerShellAgent) throws InternalErrorException, JSONException, PowershellException {
-		String userName = domain.equals(server) ? user: domain+"\\"+user; 
-		log.info("Connecting to "+server+" with "+userName+" / "+password.toString());
-		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
-				server, userName, password.getPassword());
+		com.soffid.iam.pwsh.Session s;
+		String defaultDomain = null;
+		try { 
+			log.info("Connecting to "+server+" with "+user+" / "+password.toString());
+			s = new com.soffid.iam.pwsh.Session(
+					server, user, password.getPassword());
+			List<JSONObject> r = s.powershell("[System.DirectoryServices.ActiveDirectory.Domain]::GetComputerDomain() | select-object Name");
+			log.info("Result="+r);
+			for (JSONObject rr: r) {
+				defaultDomain = rr.optString("Name", null);
+				log.info("Domain="+defaultDomain);
+			}
+		} catch (Exception e) {
+			String userName = domain.equals(server) ? user: domain+"\\"+user; 
+			log.info("Connecting to "+server+" with "+userName+" / "+password.toString());
+			s = new com.soffid.iam.pwsh.Session(
+					server, userName, password.getPassword());
+		}
 		List<HostService> services = new LinkedList<>();
 		// Services
 		for (JSONObject row:  s.powershell( 
@@ -110,6 +124,8 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 			      ! "".equals(runas) && runas != null &&
 			      ! runas.endsWith("$")) {
 				HostService hs = new HostService();
+				if (!runas.contains("@") && !runas.contains("\\") && defaultDomain != null)
+					runas = defaultDomain.toLowerCase()+"\\"+runas;
 				hs.setAccountName(runas);
 				hs.setService((String) row.get("Name"));
 				hs.setHostName(server);
@@ -128,6 +144,8 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 			      ! "".equals(runas) && runas != null &&
 			      ! runas.endsWith("$")) {
 				HostService hs = new HostService();
+				if (!runas.contains("@") && !runas.contains("\\") && defaultDomain != null)
+					runas = defaultDomain.toLowerCase()+"\\"+runas;
 				hs.setAccountName(runas);
 				hs.setService("TASK: "+(String) row.get("TaskPath")+row.get("TaskName"));
 				hs.setHostName(server);
@@ -157,9 +175,8 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 	}
 
 	private void setPowershellServicePassword(String service, Password password) throws JSONException, PowershellException {
-		String userName = domain.equals(server) ? user: domain+"\\"+user; 
 		com.soffid.iam.pwsh.Session s = new com.soffid.iam.pwsh.Session(
-				server, userName, this.password.getPassword());
+				server, user, this.password.getPassword());
 		// Services
 		for (JSONObject row:  s.powershell( 
 				"get-wmiobject Win32_Service | select-object Name,StartName")) {
