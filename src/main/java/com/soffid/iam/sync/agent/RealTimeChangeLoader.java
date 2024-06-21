@@ -91,7 +91,8 @@ public class RealTimeChangeLoader implements Runnable {
 						pageResult
 					});
 			
-			log.info("Searching changes in "+baseDn);
+			if (debugEnabled)
+				log.info("Searching changes in "+baseDn);
 			query = conn.search(baseDn, LDAPConnection.SCOPE_SUB, "(objectClass=*)", null,
 					false, ldsc);
 			do
@@ -102,10 +103,12 @@ public class RealTimeChangeLoader implements Runnable {
 						if (Thread.interrupted())
 							return;
 						String dn = entry.getDN();
-						log.info("Received change from "+dn);
+						if (debugEnabled)
+							log.info("Received change from "+dn);
 						process (entry);
 					} catch (LDAPReferralException e) {
-						log.warn("Error following referral "+e.getFailedReferral(), e);
+						if (debugEnabled)
+							log.warn("Error following referral "+e.getFailedReferral(), e);
 					}
 				}
 				LDAPControl responseControls[] = query.getResponseControls();
@@ -125,11 +128,13 @@ public class RealTimeChangeLoader implements Runnable {
 				}
 			} while (pageResult.getCookie() != null);
 		} catch (InterruptedException e) {
-			log.info("Stopped");
+			if (debugEnabled)
+				log.info("Stopped");
 		} catch (Exception e) {
 			log.warn("Error retrieving changes", e);
 		} finally {
-			log.info("Returning connection");
+			if (debugEnabled)
+				log.info("Returning connection");
 			if (query != null)
 			{
 				try {
@@ -201,7 +206,8 @@ public class RealTimeChangeLoader implements Runnable {
 							accountName = agent.generateAccountName(entry, mapping, "accountName");
 						}
 					}
-					log.info("Reconcile account name = "+accountName);
+					if (debugEnabled)
+						log.info("Reconcile account name = "+accountName);
 					if ( accountName != null)
 					{
 						new es.caib.seycon.ng.remote.RemoteServiceLocator().getServerService().reconcileAccount(dispatcher.getCodi(), accountName);

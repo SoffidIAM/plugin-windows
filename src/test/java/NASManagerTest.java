@@ -21,7 +21,8 @@ public class NASManagerTest {
 		if (false) {
 			NASManager m;
 
-			m = new NASManager("AD", "ad.bubu.lab", "Administrator", new Password("Test70."), new HashMap<>());
+			m = new NASManager("AD", "ad.bubu.lab", "Administrator", new Password("Test70."), new HashMap<>(),
+					true);
 			m.createFolder("//ad.bubu.lab/c$/test-folder", null);
 			
 			m.addAcl("//ad.bubu.lab/c$/test-folder", "ppig", "GENERIC_ALL", "CONTAINER_INHERIT_ACE OBJECT_INHERIT_ACE", null);

@@ -99,7 +99,8 @@ public class RealTimeChangeLoader2 implements Runnable {
 	
 	public void run() {
 		try {
-			log.info("Starting real time loader for " + domainController);
+			if (debugEnabled)
+				log.info("Starting real time loader for " + domainController);
 			Security.nestedLogin(tenant, agentName, Security.ALL_PERMISSIONS);
 			LDAPConnection conn = pool.getConnection();
 			Config config = Config.getConfig();
@@ -130,7 +131,8 @@ public class RealTimeChangeLoader2 implements Runnable {
 				do {
 					LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getSearchConstraints());
 					constraints.setControls(new LDAPControl[] { deletedObjects, pageResult} );
-					log.info("Looking for changes in " + domainController + " LDAP QUERY=" + query + " on " + baseDn);
+					if (debugEnabled)
+						log.info("Looking for changes in " + domainController + " LDAP QUERY=" + query + " on " + baseDn);
 					LDAPSearchResults search = conn.search(baseDn, LDAPConnection.SCOPE_SUB, query,
 							null, false, constraints);
 					while (search.hasMore()) {
@@ -308,7 +310,8 @@ public class RealTimeChangeLoader2 implements Runnable {
 						}
 					}
 					String ll = entry.getAttribute("usnChanged").getStringValue();
-					log.info("Reconcile account name = " + accountName+ " usnChanged = "+ll);
+					if (debugEnabled)
+						log.info("Reconcile account name = " + accountName+ " usnChanged = "+ll);
 					if (accountName != null) {
 						new es.caib.seycon.ng.remote.RemoteServiceLocator().getServerService()
 								.reconcileAccount(dispatcher.getCodi(), accountName);

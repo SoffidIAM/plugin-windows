@@ -23,7 +23,8 @@ public class RemoteWindowsAgent_v2 extends RemoteWindowsAgent implements Service
 	@Override
 	public List<HostService> getHostServices() throws RemoteException, InternalErrorException {
 		try {
-			NASManager nasManager = new NASManager(serverName, serverName, userName, password, new HashMap<>());
+			NASManager nasManager = new NASManager(serverName, serverName, userName, password, new HashMap<>(),
+					isDebug());
 			List<String> servers = new LinkedList<>();
 			servers.add(serverName);
 			return nasManager.getHostServices(servers);
@@ -36,7 +37,8 @@ public class RemoteWindowsAgent_v2 extends RemoteWindowsAgent implements Service
 	public void setServicePassword(String service, Account account, Password password)
 			throws RemoteException, InternalErrorException {
 		try {
-			NASManager nasManager = new NASManager(serverName, serverName, userName, this.password, new HashMap<>());
+			NASManager nasManager = new NASManager(serverName, serverName, userName, this.password, new HashMap<>(),
+					isDebug());
 			nasManager.setServicePassword(Collections.singletonList(serverName), service, password);
 		} catch (IOException e) {
 			throw new InternalErrorException("Error fetching services", e);
