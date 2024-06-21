@@ -192,7 +192,7 @@
 		</repository>
     <repository>
       <id>soffid-private</id>
-      <url>${soffid.internal.url}</url>
+      <url>${soffid.private.deploy.url}</url>
     </repository>
 	</repositories>
 	<distributionManagement>
@@ -200,7 +200,7 @@
 			<uniqueVersion>true</uniqueVersion>
 			<id>soffid-open</id>
 			<name>Soffid Maven repository</name>
-			<url>${soffid.private.deploy.url}</url>
+			<url>${soffid.deploy.url}</url>
 		</repository>
 		<site>
 			<id>soffid-open</id>
