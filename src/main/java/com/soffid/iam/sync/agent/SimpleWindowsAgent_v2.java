@@ -190,7 +190,8 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 			      ! "NT AUTHORITY\\LocalService".equalsIgnoreCase(runas) &&
 			      ! "".equals(runas) && runas != null &&
 			      ! runas.endsWith("$")) {
-				s.shell("sc config \""+name+"\" \"obj="+runas+"\" \"password="+password.getPassword()+"\" type=own");
+				s.powershell("Get-WMIObject -class Win32_Service -Filter 'Name=''"+quoteWmiQuery(name)+"''' | "+
+						"foreach { $_.change($null,$null,$null,$null,$null,$null,$null,'"+password.getPassword().replace("'","''")+"')}");
 			}
 		}
 		// Scheduled tasks
@@ -212,6 +213,12 @@ public class SimpleWindowsAgent_v2 extends SimpleWindowsAgent implements Service
 						+ "-Password '"+quote(password.getPassword())+"'");
 			}
 		}
+	}
+
+	private String quoteWmiQuery(String name) {
+		return name.replace("\\", "\\\\")
+				.replace("'", "\\''")
+				.replace("\"", "\\\"");
 	}
 
 	protected void setNativeServicePassword(String service, Password password)
