@@ -2587,7 +2587,72 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						}
 						return l;
 					}
-
+					else if (verb.equals("get-user-sid")) {
+						try {
+							LinkedList<Map<String,Object>> l = new LinkedList<>();
+							LDAPEntry entry = findSamObject("user", SAM_ACCOUNT_NAME_ATTRIBUTE,
+									command, false);
+							if (entry != null) {
+								LDAPAttribute sidAttribute = entry.getAttribute("objectSid");
+								HashMap<String,Object> m = new HashMap<>();
+								m.put("sid", sidAttribute.getStringValue());
+								l.add(m);
+							}
+							return l;
+						} catch (Exception e) {
+							throw new InternalErrorException ("Error getting SID for "+command,	e);
+						}
+					}
+					else if (verb.equals("add-group")) {
+						try {
+							String user = (String) params.get("user");
+							String group = (String) params.get("group");
+							LDAPEntry entry = findSamObject("user", SAM_ACCOUNT_NAME_ATTRIBUTE,
+									user, false);
+							if (entry != null) {
+								if (! nasManager.isLocalGroup(command, group)) {
+									LDAPEntry groupEntry = findSamObject("group", SAM_ACCOUNT_NAME_ATTRIBUTE,
+											group, false);
+									if (groupEntry != null) {
+										addGroupMember(group, user, entry);
+									}
+								} else {
+									String sid =
+											(String) new LDAPExtensibleObject("user", entry, null)
+											.getAttribute("objectSid");
+									nasManager.addLocalGroup(command, group, sid);
+								}
+							}
+							return new LinkedList<>();
+						} catch (Exception e) {
+							throw new InternalErrorException ("Error getting SID for "+command,	e);
+						}
+					}
+					else if (verb.equals("delete-group")) {
+						try {
+							String user = (String) params.get("user");
+							String group = (String) params.get("group");
+							LDAPEntry entry = findSamObject("user", SAM_ACCOUNT_NAME_ATTRIBUTE,
+									user, false);
+							if (entry != null) {
+								if (! nasManager.isLocalGroup(command, group)) {
+									LDAPEntry groupEntry = findSamObject("group", SAM_ACCOUNT_NAME_ATTRIBUTE,
+											group, false);
+									if (groupEntry != null) {
+										removeGroupMember(groupEntry.getDN(), user, entry);
+									}
+								} else {
+									String sid =
+											(String) new LDAPExtensibleObject("user", entry, null)
+											.getAttribute("objectSid");
+									nasManager.deleteLocalGroup(command, group, sid);
+								}
+							}
+							return new LinkedList<>();
+						} catch (Exception e) {
+							throw new InternalErrorException ("Error getting SID for "+command,	e);
+						}
+					}
 					else
 					{
 						return queryLdapObjects (verb, command, params);
@@ -2595,6 +2660,11 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				} finally {
 				}
 
+			}
+
+			private boolean isDomainControllerGroup(String command) {
+				// TODO Auto-generated method stub
+				return false;
 			}
 
 		});

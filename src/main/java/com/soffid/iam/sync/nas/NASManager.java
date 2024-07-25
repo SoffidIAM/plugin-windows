@@ -47,7 +47,9 @@ import com.hierynomus.smbj.share.DiskShare;
 import com.hierynomus.smbj.share.File;
 import com.rapid7.client.dcerpc.RPCException;
 import com.rapid7.client.dcerpc.dto.SID;
+import com.rapid7.client.dcerpc.mserref.SystemErrorCode;
 import com.rapid7.client.dcerpc.mssamr.SecurityAccountManagerService;
+import com.rapid7.client.dcerpc.mssamr.dto.AliasHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.DomainHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.GroupHandle;
 import com.rapid7.client.dcerpc.mssamr.dto.MembershipWithName;
@@ -74,6 +76,7 @@ import com.soffid.iam.remote.RemoteServiceLocator;
 import com.soffid.iam.service.ApplicationService;
 import com.soffid.iam.service.DispatcherService;
 import com.soffid.iam.service.GroupService;
+import com.soffid.msrpc.samr.SamrService;
 import com.soffid.msrpc.srvr.ServerService;
 import com.soffid.msrpc.svcctl.EnumServiceStatus;
 import com.soffid.msrpc.svcctl.ServiceControlManagerService;
@@ -1292,4 +1295,149 @@ public class NASManager {
 			return new String[] {this.domain, this.user, this.password.getPassword()};
 	}
 
+	public void addLocalGroup(String host, String group, String userSid) throws InternalErrorException {
+		try {
+			connect();
+			try (Connection connection = smbClient.connect(host)) {
+				final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+						user, password.getPassword().toCharArray(), domain);
+				try (Session session = connection.authenticate(smbAuthenticationContext)) {
+					final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+					SamrService sam = new SamrService(transport2, session);
+					ServerHandle serverHandle = sam.openServer();
+					MembershipWithName[] domains = sam.getDomainsForServer(serverHandle);
+					for (MembershipWithName n: domains)
+					{
+					    SID sid = sam.getSIDForDomain(serverHandle, n.getName());
+						DomainHandle domainHandle = sam.openDomain(serverHandle, sid);
+						int [] r;
+						try {
+							r = sam.lookupNames(domainHandle, new String[] {group});
+							for (int i: r) {
+								try {
+									AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
+									try {
+										sam.addAliasMember(aliasHandle, SID.fromString(userSid));
+									} finally {
+										sam.closeHandle(aliasHandle);
+									}
+								} catch (RPCException e) {
+									if (e.getErrorCode() == SystemErrorCode.STATUS_NO_SUCH_ALIAS ||
+											e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED) {
+									}
+									else throw e;
+								}
+							}		    	
+						} catch (RPCException e) {
+							if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED) {
+							}
+							else throw e;
+						}
+					}
+				}
+			}
+		} catch (RPCException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		} catch (IOException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		}
+	}
+
+	public void deleteLocalGroup(String host, String group, String userSid) throws InternalErrorException {
+		try {
+			connect();
+			try (Connection connection = smbClient.connect(host)) {
+				final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+						user, password.getPassword().toCharArray(), domain);
+				try (Session session = connection.authenticate(smbAuthenticationContext)) {
+					final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+					SamrService sam = new SamrService(transport2, session);
+					ServerHandle serverHandle = sam.openServer();
+					MembershipWithName[] domains = sam.getDomainsForServer(serverHandle);
+					boolean foundAlias = false;
+					for (MembershipWithName n: domains)
+					{
+					    SID sid = sam.getSIDForDomain(serverHandle, n.getName());
+						DomainHandle domainHandle = sam.openDomain(serverHandle, sid);
+						int [] r;
+						try {
+							r = sam.lookupNames(domainHandle, new String[] {group});
+							for (int i: r) {
+								try {
+									AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
+									try {
+										sam.deleteAliasMember(aliasHandle, SID.fromString(userSid));
+									} finally {
+										sam.closeHandle(aliasHandle);
+									}
+									foundAlias = true;
+								} catch (RPCException e) {
+									if (e.getErrorCode() == SystemErrorCode.STATUS_NO_SUCH_ALIAS) {
+									}
+									else throw e;
+								}
+							}		    	
+						} catch (RPCException e) {
+							if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED) {
+							}
+							else throw e;
+						}
+					}
+				}
+			}
+		} catch (RPCException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		} catch (IOException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		}
+	}
+
+	public boolean isLocalGroup(String host, String group) throws InternalErrorException {
+		try {
+			connect();
+			try (Connection connection = smbClient.connect(host)) {
+				final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+						user, password.getPassword().toCharArray(), domain);
+				try (Session session = connection.authenticate(smbAuthenticationContext)) {
+					final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+					SamrService sam = new SamrService(transport2, session);
+					ServerHandle serverHandle = sam.openServer();
+					MembershipWithName[] domains = sam.getDomainsForServer(serverHandle);
+					boolean foundAlias = false;
+					for (MembershipWithName n: domains)
+					{
+					    SID sid = sam.getSIDForDomain(serverHandle, n.getName());
+						DomainHandle domainHandle = sam.openDomain(serverHandle, sid);
+						int [] r;
+						try {
+							r = sam.lookupNames(domainHandle, new String[] {group});
+							for (int i: r) {
+								try {
+									AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
+									try {
+										return true;
+									} finally {
+										sam.closeHandle(aliasHandle);
+									}
+								} catch (RPCException e) {
+									if (e.getErrorCode() == SystemErrorCode.STATUS_NO_SUCH_ALIAS) {
+									}
+									else throw e;
+								}
+							}		    	
+						} catch (RPCException e) {
+							if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED) {
+							}
+							else throw e;
+						}
+					}
+				}
+			}
+			return false;
+		} catch (RPCException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		} catch (IOException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		}
+	}
 }

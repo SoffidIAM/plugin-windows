@@ -465,15 +465,15 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 				}
 			}
 			if (!found) {
-			    deleteAliasMember(sam, userSid, account, oldPerm);
+			    deleteAliasMember(sam, userSid, oldPerm.getRoleName());
 			}
 		}
 		for (RoleGrant newPerm: newPerms) {
-			addAliasMember(sam, userSid, account, newPerm);
+			addAliasMember(sam, userSid, newPerm.getRoleName());
 		}
 	}
 
-	public void deleteAliasMember(SamrService sam, SID userSid, Account account, RoleGrant oldPerm) throws IOException {
+	public void deleteAliasMember(SamrService sam, SID userSid, String groupName) throws IOException {
 		ServerHandle serverHandle = sam.openServer();
 		MembershipWithName[] domains = sam.getDomainsForServer(serverHandle);
 		for (MembershipWithName n: domains)
@@ -481,13 +481,13 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 		    SID sid = sam.getSIDForDomain(serverHandle, n.getName());
 			DomainHandle domainHandle = sam.openDomain(serverHandle, sid);
 			if (isDebug())
-				log.info("Searching alias "+oldPerm.getRoleName()+" at SAM domain "+n.getName());
+				log.info("Searching alias "+groupName+" at SAM domain "+n.getName());
 			int [] r;
 			try {
-				r = sam.lookupNames(domainHandle, new String[] {oldPerm.getRoleName()});
+				r = sam.lookupNames(domainHandle, new String[] {groupName});
 				for (int i: r) {
 					if (isDebug())
-						log.info("Opening alias "+oldPerm.getRoleName()+" at SAM domain "+n.getName());
+						log.info("Opening alias "+groupName+" at SAM domain "+n.getName());
 					AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
 					try {
 						sam.deleteAliasMember(aliasHandle, userSid);
@@ -503,7 +503,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 		}
 	}
 
-	public void addAliasMember(SamrService sam, SID userSid, Account account, RoleGrant newPerm) throws IOException, InternalErrorException {
+	public void addAliasMember(SamrService sam, SID userSid, String roleName) throws IOException, InternalErrorException {
 		ServerHandle serverHandle = sam.openServer();
 		MembershipWithName[] domains = sam.getDomainsForServer(serverHandle);
 		boolean foundAlias = false;
@@ -512,13 +512,13 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 		    SID sid = sam.getSIDForDomain(serverHandle, n.getName());
 			DomainHandle domainHandle = sam.openDomain(serverHandle, sid);
 			if (isDebug())
-				log.info("Searching alias "+newPerm.getRoleName()+" at SAM domain "+n.getName());
+				log.info("Searching alias "+roleName+" at SAM domain "+n.getName());
 			int [] r;
 			try {
-				r = sam.lookupNames(domainHandle, new String[] {newPerm.getRoleName()});
+				r = sam.lookupNames(domainHandle, new String[] {roleName});
 				for (int i: r) {
 					if (isDebug())
-						log.info("Opening alias "+newPerm.getRoleName()+" at SAM domain "+n.getName());
+						log.info("Opening alias "+roleName+" at SAM domain "+n.getName());
 					AliasHandle aliasHandle = sam.openAlias(domainHandle, i, (int) AccessMask.GENERIC_ALL.getValue());
 					try {
 						sam.addAliasMember(aliasHandle, userSid);
@@ -533,7 +533,7 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 			}
 		}
 		if (!foundAlias)
-			throw new InternalErrorException("Cannot find local group "+newPerm.getRoleName());
+			throw new InternalErrorException("Cannot find local group "+roleName);
 	}
 	/** Flags 
 	  	typedef [public,bitmap32bit] bitmap {
@@ -756,6 +756,97 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 				throw new InternalErrorException("Error querying host name", e);
 			}
 		}
+		if (verb.equals("get-user-sid")) {
+			String sid = getUserSid(command);
+			if (sid != null) {
+				HashMap<String,Object> m = new HashMap<>();
+				m.put("sid", sid);
+				l.add(m);
+			}
+		}
+		if (verb.equals("add-group")) {
+			String user = (String) params.get("user");
+			String group = (String) params.get("group");
+			try {
+				String sid = getUserSid(user);
+				if (sid != null) {
+					Session session = getSession();
+					try {
+					    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+					    SamrService sam = new SamrService(transport2, session);
+					    addAliasMember(sam, SID.fromString(sid), group);
+					} finally {
+						closeSession(session);
+					}
+				}
+				return null;
+			} catch (RPCException e) {
+				throw new InternalErrorException("Error getting accounts list", e);
+			} catch (IOException e) {
+				throw new InternalErrorException("Error getting accounts list", e);
+			}
+		}
+		if (verb.equals("delete-group")) {
+			String user = (String) params.get("user");
+			String group = (String) params.get("group");
+			try {
+				String sid = getUserSid(user);
+				if (sid != null) {
+					Session session = getSession();
+					try {
+					    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+					    SamrService sam = new SamrService(transport2, session);
+					    deleteAliasMember(sam, SID.fromString(sid), group);
+					} finally {
+						closeSession(session);
+					}
+				}
+				return null;
+			} catch (RPCException e) {
+				throw new InternalErrorException("Error getting accounts list", e);
+			} catch (IOException e) {
+				throw new InternalErrorException("Error getting accounts list", e);
+			}
+		}
 		return l;
 	}
+	
+	public String getUserSid(String userAccount) throws RemoteException, InternalErrorException {
+		try {
+			Session session = getSession();
+			try {
+			    final RPCTransport transport2 = SMBTransportFactories.SAMSVC.getTransport(session);
+			    SamrService sam = new SamrService(transport2, session);
+			    ServerHandle serverHandle = sam.openServer();
+			    MembershipWithName[] domains = sam.getDomainsForServer(serverHandle);
+			    for (MembershipWithName n: domains)
+			    {
+				    SID sid = sam.getSIDForDomain(serverHandle, n.getName());
+			    	DomainHandle domainHandle = sam.openDomain(serverHandle, sid);
+			    	if (isDebug())
+			    		log.info("Searching user "+userAccount+" at SAM domain "+n.getName());
+			    	int [] r;
+			    	try {
+			    		r = sam.lookupNames(domainHandle, new String[] {userAccount});
+			    	} catch (RPCException e) {
+			    		if (e.getErrorCode() == SystemErrorCode.STATUS_NONE_MAPPED)
+			    			continue;
+			    		else
+			    			throw e;
+			    	}
+			    	for (int i: r) {
+			    		return sid.resolveRelativeID(i).toString();
+			    	}		    	
+			    }
+			} finally {
+				closeSession(session);
+			}
+			return null;
+		} catch (RPCException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		} catch (IOException e) {
+			throw new InternalErrorException("Error getting accounts list", e);
+		}
+	}
+
 }
