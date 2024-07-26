@@ -55,11 +55,6 @@
 			<artifactId>pwsh-tool</artifactId>
 			<version>1.0.1</version>
 		</dependency>
-		<dependency>
-			<groupId>com.soffid.iam.console</groupId>
-			<artifactId>install</artifactId>
-			<version>3.5.52-SNAPSHOT</version>
-		</dependency>
 	</dependencies>
 	<licenses>
 		<license>
