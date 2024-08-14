@@ -5023,11 +5023,12 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 						else
 						{
 							LDAPEntry entry = searchEntry(userGroups[i], new String [] {"CN", "sAMAccountName"});
-							if (debugEnabled)
-							{
-								if (entry == null)
-									log.info("Warning: Cannot found group " + groupName);
-								else if (entry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE) == null)
+							if (entry == null) {
+								if (debugEnabled)
+									log.info("Warning: Cannot find group " + groupName);
+							}
+							else if (entry.getAttribute(SAM_ACCOUNT_NAME_ATTRIBUTE) == null) {
+								if (debugEnabled)
 									log.info("Warning: Found group with no sAMAccountName: "
 											+ groupName);
 							}
@@ -5041,7 +5042,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 										{
 											if (debugEnabled)
 												log.info("User {} belongs to [{}]",
-													userAccount, roleName);
+														userAccount, roleName);
 											RolGrant rg = new RolGrant();
 											rg.setOwnerAccountName(userAccount);
 											rg.setRolName(roleName);
@@ -5743,7 +5744,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		try {
 			if (debugEnabled)
 				log.info("Accepting dns name "+dns);
-			LDAPEntry entry = findAccountInDomain (dnsNameToDomain.get(dns), account);
+			LDAPEntry entry = findPrincipalInDomain (dnsNameToDomain.get(dns), principalName);
 			if (entry == null) {
 				if (debugEnabled)
 					log.info("Cannot find sAMAccountName "+account);
@@ -5766,8 +5767,8 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	}
 
 
-	private LDAPEntry findAccountInDomain(String domain, String account) throws Exception {
-		String queryString = "(&(objectClass=user)(sAMAccountName=" + escapeLDAPSearchFilter(account)+"))";
+	private LDAPEntry findPrincipalInDomain(String domain, String account) throws Exception {
+		String queryString = "(&(objectClass=user)(userPrincipalName=" + escapeLDAPSearchFilter(account)+"))";
 		
 		LDAPConnection conn = getConnection(domain);
 		try {
