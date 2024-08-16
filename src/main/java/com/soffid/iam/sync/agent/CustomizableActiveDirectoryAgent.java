@@ -123,6 +123,7 @@ import es.caib.seycon.ng.comu.Account;
 import es.caib.seycon.ng.comu.AttributeDirection;
 import es.caib.seycon.ng.comu.AttributeMapping;
 import es.caib.seycon.ng.comu.Grup;
+import es.caib.seycon.ng.comu.LlistaCorreu;
 import es.caib.seycon.ng.comu.ObjectMapping;
 import es.caib.seycon.ng.comu.Password;
 import es.caib.seycon.ng.comu.Rol;
@@ -139,6 +140,7 @@ import es.caib.seycon.ng.sync.engine.extobj.AccountExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.ExtensibleObjectFinder;
 import es.caib.seycon.ng.sync.engine.extobj.GrantExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.GroupExtensibleObject;
+import es.caib.seycon.ng.sync.engine.extobj.MailListExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.ObjectTranslator;
 import es.caib.seycon.ng.sync.engine.extobj.RoleExtensibleObject;
 import es.caib.seycon.ng.sync.engine.extobj.UserExtensibleObject;
@@ -153,6 +155,7 @@ import es.caib.seycon.ng.sync.intf.ExtensibleObjects;
 import es.caib.seycon.ng.sync.intf.GroupMgr;
 import es.caib.seycon.ng.sync.intf.KerberosPrincipalInfo;
 import es.caib.seycon.ng.sync.intf.LogEntry;
+import es.caib.seycon.ng.sync.intf.MailAliasMgr;
 import es.caib.seycon.ng.sync.intf.ReconcileMgr2;
 import es.caib.seycon.ng.sync.intf.RoleMgr;
 import es.caib.seycon.ng.sync.intf.UserMgr;
@@ -171,7 +174,7 @@ import es.caib.seycon.util.TimedOutException;
 public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		implements ExtensibleObjectMgr, UserMgr, ReconcileMgr2, RoleMgr,
 		GroupMgr, KerberosAgent, AuthoritativeIdentitySource2,
-		AccessLogMgr {
+		AccessLogMgr, MailAliasMgr {
 
 	public static final String SID_EVERYONE = "S-1-1-0";
 
@@ -5816,6 +5819,62 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 
 	public void setAdministratorDN(String administratorDN) {
 		this.administratorDN = administratorDN;
+	}
+
+
+	@Override
+	public void updateUserAlias(String useKey, Usuari user) throws InternalErrorException {
+		// TODO Auto-generated method stub
+		
+	}
+
+
+	@Override
+	public void removeUserAlias(String userKey) throws InternalErrorException {
+		// TODO Auto-generated method stub
+		
+	}
+
+
+	@Override
+	public void updateListAlias(LlistaCorreu llista) throws InternalErrorException {
+		MailListExtensibleObject sourceObject = new MailListExtensibleObject(llista,
+				getServer());
+		ExtensibleObjects objects = objectTranslator
+				.generateObjects(sourceObject);
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
+		try {
+			String key = llista.getNom()+"@"+llista.getCodiDomini();
+			updateObjects(key, key, objects, sourceObject, null /*always apply*/, true);
+		} catch (InternalErrorException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
+		}
+	}
+
+
+	@Override
+	public void removeListAlias(String nomLlista, String domini) throws InternalErrorException {
+		LlistaCorreu grup = new LlistaCorreu();
+		grup.setNom(nomLlista);
+		grup.setCodiDomini(domini);;
+		MailListExtensibleObject sourceObject = new MailListExtensibleObject(grup,
+				getServer());
+		ExtensibleObjects objects = objectTranslator
+				.generateObjects(sourceObject);
+		Watchdog.instance().interruptMe(getDispatcher().getTimeout());
+		try {
+			removeObjects(nomLlista+"@"+domini, objects, sourceObject, null /*always apply*/);
+		} catch (InternalErrorException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new InternalErrorException(e.getMessage(), e);
+		} finally {
+			Watchdog.instance().dontDisturb();
+		}
 	}
 }
 
