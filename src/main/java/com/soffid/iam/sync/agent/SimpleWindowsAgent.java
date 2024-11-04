@@ -707,11 +707,51 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
 		    return session;
 		} catch (SMBRuntimeException e) {
-			Password p = getServer().getOrGenerateUserPassword(user, getAgentName());
+			Password p;
+			if (! domain.equalsIgnoreCase(server)) {
+				Collection<Account> accounts = new RemoteServiceLocator()
+					.getAccountService()
+					.findAccountByJsonQuery(
+						"(name eq \""
+						+ user
+								.replace("\\", "\\\\")
+								.replace("\"", "\\\"")
+								.replace("\'", "\\\'")
+						+ "\" or name ew \"\\" 
+						+ user
+							.replace("\\", "\\\\")
+							.replace("\"", "\\\"")
+							.replace("\'", "\\\'")
+						+ "\") " 
+						+ "and type eq 'S' "
+						+ "and system.className co 'ActiveDirectory' "
+						+ "and secrets pr");
+				for (Account account: accounts) {
+					try {
+						log.info("Fetching password for "+account.getName()+" at "+account.getSystem());
+						p = getServer().getAccountPassword(account.getName(), account.getSystem());
+						if (p != null) {
+						    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+						    		user, p.getPassword().toCharArray(), domain);
+						    log.info("Authenticating");
+						    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+							password = p;
+							return session;
+						}
+					} catch (Exception ex) {
+						// Password is not valid
+					}
+				}
+			}
+			p = getServer().getAccountPassword(getAgentName(), user);
 			if (p == null || p.getPassword().equals(password.getPassword()))
 				throw e;
-			password = p;
-			return getSession();
+		    final AuthenticationContext smbAuthenticationContext = new AuthenticationContext(
+		    		user, p.getPassword().toCharArray(), domain);
+		    log.info("Authenticating");
+		    final Session session = smbConnection.authenticate(smbAuthenticationContext);
+		    password = p;
+		    return session;
 		}
 
 	}
