@@ -1182,6 +1182,18 @@ public class NASManager {
 				services.add(hs);
 			}
 		}
+		// IIS
+		for (JSONObject row:  s.powershell( 
+				"import-module webadministration; get-childitem -path IIS:\\AppPools\\ | select-object name,@{e={$_.processModel.userName};l=\"userName\"}")) {
+			String runas = (String) row.optString("userName");
+			if (runas != null && ! runas.isBlank()) {
+				HostService hs = new HostService();
+				hs.setAccountName(runas);
+				hs.setService("IIS: "+(String) row.get("name"));
+				hs.setHostName(server);
+				services.add(hs);
+			}
+		}
 		return services;
 	}
 
@@ -1227,6 +1239,18 @@ public class NASManager {
 						quote(row.getString("TaskName"))+"' -TaskPath '"+
 						quote(row.getString("TaskPath"))+"' -User '"+quote(runas)+"' "
 						+ "-Password '"+quote(password.getPassword())+"'");
+			}
+		}
+		// IIS
+		for (JSONObject row:  s.powershell( 
+				"import-module webadministration; get-childitem -path IIS:\\AppPools\\ | "
+				+ "select-object name,@{e={$_.processModel.userName};l=\"userName\"}")) {
+			String name = "IIS: "+(String) row.optString("name");
+			if (service.equals(name)) {
+				s.powershell("import-module webadministration; "
+					+ "set-itemproperty -path 'IIS:\\AppPools\\"+quote(name.substring(5))+"' "
+					+ "-name processModel.password "
+					+ "-value '"+quote(password.getPassword())+"'");
 			}
 		}
 	}
