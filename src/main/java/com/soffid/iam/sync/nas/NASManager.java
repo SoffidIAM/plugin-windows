@@ -1183,8 +1183,7 @@ public class NASManager {
 			}
 		}
 		// IIS
-		for (JSONObject row:  s.powershell( 
-				"import-module webadministration; get-childitem -path IIS:\\AppPools\\ | select-object name,@{e={$_.processModel.userName};l=\"userName\"}")) {
+		for (JSONObject row:  getIISApplications(s)) {
 			String runas = (String) row.optString("userName");
 			if (runas != null && ! runas.isBlank()) {
 				HostService hs = new HostService();
@@ -1242,9 +1241,7 @@ public class NASManager {
 			}
 		}
 		// IIS
-		for (JSONObject row:  s.powershell( 
-				"import-module webadministration; get-childitem -path IIS:\\AppPools\\ | "
-				+ "select-object name,@{e={$_.processModel.userName};l=\"userName\"}")) {
+		for (JSONObject row:  getIISApplications(s)) {
 			String name = "IIS: "+(String) row.optString("name");
 			if (service.equals(name)) {
 				s.powershell("import-module webadministration; "
@@ -1252,6 +1249,17 @@ public class NASManager {
 					+ "-name processModel.password "
 					+ "-value '"+quote(password.getPassword())+"'");
 			}
+		}
+	}
+
+	protected List<JSONObject> getIISApplications(com.soffid.iam.pwsh.Session s) throws PowershellException {
+		try {
+			return s.powershell( 
+				"import-module webadministration; get-childitem -path IIS:\\AppPools\\ | "
+				+ "select-object name,@{e={$_.processModel.userName};l=\"userName\"}");
+		} catch (Exception e) {
+			// IIS is not installed
+			return new LinkedList<>();
 		}
 	}
 
