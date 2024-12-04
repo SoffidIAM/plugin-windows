@@ -5739,15 +5739,23 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		int i = principalName.lastIndexOf("@");
 		String account = principalName.substring(0, i);
 		String dns = principalName.substring(i+1).toLowerCase();
-		if ( !dnsNameToDomain.containsKey(dns)) {
-			if (debugEnabled)
-				log.info("Not accepting dns name "+dns);
-			return null;
-		}
+//		if ( !dnsNameToDomain.containsKey(dns)) {
+//			if (debugEnabled)
+//				log.info("Not accepting dns name "+dns);
+//			return null;
+//		}
 		try {
-			if (debugEnabled)
-				log.info("Accepting dns name "+dns);
-			LDAPEntry entry = findPrincipalInDomain (dnsNameToDomain.get(dns), principalName);
+//			if (debugEnabled)
+//				log.info("Accepting dns name "+dns);
+			LDAPEntry entry = findPrincipalInDomain (mainDomain, principalName);
+			if (entry == null) {
+				LDAPPool pool = getPool(mainDomain);
+				for (LDAPPool childPool: pool.getChildPools()) {
+					entry = findPrincipalInDomain(pool.getBaseDN(), principalName);
+					if (entry != null)
+						break;
+				}
+			}
 			if (entry == null) {
 				if (debugEnabled)
 					log.info("Cannot find sAMAccountName "+account);
