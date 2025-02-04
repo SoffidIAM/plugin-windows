@@ -2684,19 +2684,39 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			{
 				LinkedList<Map<String, Object>> result = new LinkedList<Map<String,Object>>();
 				
-				LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
-				LDAPSearchResults query = conn.search(base,
-							LDAPConnection.SCOPE_SUB, queryString, null, false,
-							constraints);
-				while (query.hasMore()) {
-					try {
-						LDAPEntry entry = query.next();
-						result.add( new LDAPExtensibleObject("unknown", entry, pool) );
-					} catch (LDAPReferralException ldapError) {
-						if (followReferrals)
-							throw ldapError;
+				LDAPPagedResultsControl pageResult = new LDAPPagedResultsControl(
+						conn.getSearchConstraints().getMaxResults(),
+						false);
+
+				do {
+					LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getSearchConstraints());
+					constraints.setControls(pageResult);
+					constraints.setServerTimeLimit( 
+							getDispatcher().getLongTimeout() == null ? 0: 
+								getDispatcher().getLongTimeout().intValue());
+					LDAPSearchResults query = conn.search(base,
+								LDAPConnection.SCOPE_SUB, queryString, null, false,
+								constraints);
+					while (query.hasMore()) {
+						try {
+							LDAPEntry entry = query.next();
+							result.add( new LDAPExtensibleObject("unknown", entry, pool) );
+						} catch (LDAPReferralException ldapError) {
+							if (followReferrals)
+								throw ldapError;
+						}
+					}			
+					LDAPControl responseControls[] = query.getResponseControls();
+					pageResult.setCookie(null); 
+					if (responseControls != null) {
+						for (int i = 0; i < responseControls.length; i++) {
+							if (responseControls[i] instanceof LDAPPagedResultsResponse) {
+								LDAPPagedResultsResponse response = (LDAPPagedResultsResponse) responseControls[i];
+								pageResult.setCookie(response.getCookie());
+							}
+						}
 					}
-				}			
+				} while (pageResult.getCookie() != null);
 				return result;
 			} catch (Exception e) {
 				handleException(e, conn);

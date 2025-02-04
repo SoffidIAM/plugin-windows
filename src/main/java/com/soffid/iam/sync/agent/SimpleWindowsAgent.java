@@ -197,8 +197,9 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 			    	for (int i: r) {
 			    		if (isDebug())
 			    			log.info("Opening user "+userAccount+" at SAM domain "+n.getName());
-			    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
+			    		UserHandle userHandle = null;
 			    		try {
+			    			userHandle = sam.openUser(domainHandle, i, 0x201DB);
 				    		UserAllInformation userAllInformation = sam.getUserAllInformation(userHandle);
 				    		Account acc = new Account();
 				    		acc.setName(userAllInformation.getUserName());
@@ -218,8 +219,34 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 				    			acc.setStatus(AccountStatus.ACTIVE);
 				    		}
 				    		return acc;
+			    		} catch (RPCException e) {
+			    			if (e.getErrorCode() == SystemErrorCode.STATUS_ACCESS_DENIED)  {
+			    				userHandle = sam.openUser(domainHandle, i, 0x2001B);
+					    		UserAllInformation userAllInformation = sam.getUserAllInformation(userHandle);
+					    		Account acc = new Account();
+					    		acc.setName(userAllInformation.getUserName());
+					    		acc.setLoginName(userAllInformation.getUserName());
+					    		acc.setDescription(userAllInformation.getFullName());
+					    		acc.setAttributes(new HashMap<String,Object>());
+					    		acc.getAttributes().put("rid", userAllInformation.getUserId());
+					    		acc.getAttributes().put("gid", userAllInformation.getPrimaryGroupId());
+					    		acc.getAttributes().put("home", userAllInformation.getHomeDirectory());
+					    		acc.getAttributes().put("comments", userAllInformation.getAdminComment());
+					    		if ((userAllInformation.getUserAccountControl() & 1) != 0)
+					    		{
+					    			acc.setDisabled(true);
+					    			acc.setStatus(AccountStatus.DISABLED);
+					    		} else {
+					    			acc.setDisabled(false);
+					    			acc.setStatus(AccountStatus.ACTIVE);
+					    		}
+					    		return acc;
+			    			}
+		    				else
+		    					throw e;
 			    		} finally {
-			    			sam.closeHandle(userHandle);
+			    			if (userHandle != null)
+			    				sam.closeHandle(userHandle);
 			    		}
 			    	}		    	
 			    }
@@ -349,37 +376,53 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 			    	for (int i: r) {
 			    		if (isDebug())
 			    			log.info("Opening user "+userAccount+" at SAM domain "+n.getName());
-			    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x201DB);
 			    		try {
-			    			SID userSid = sid.resolveRelativeID(i);
-					    	List<RoleGrant> rg = new LinkedList<>();
-					    	for (MembershipWithName n2: domains) {
-					    		SID sid2 = sam.getSIDForDomain(serverHandle, n2.getName());
-					    		DomainHandle domainHandle2 = sam.openDomain(serverHandle, sid2);
-						    	for (MembershipWithName alias: sam.getAliasesForDomain(domainHandle2)) {
-						    		AliasHandle aliasHandle = sam.openAlias(domainHandle2, alias.getRelativeID());
-						    		try {
-							    		for (SID members: sam.getMembersInAlias(aliasHandle)) {
-							    			if (members.equals(userSid)) {
-							    				AliasGeneralInformation ai = sam.getAliasGeneralInformation(aliasHandle);
-							    				if (ai != null) {
-							    					RoleGrant g = new RoleGrant();
-							    					g.setOwnerAccountName(userAccount);
-							    					g.setOwnerSystem(getAgentName());
-							    					g.setRoleName(ai.getName());
-							    					g.setSystem(getAgentName());
-							    					rg.add(g);
-							    				}
-							    			}
-							    		}
-						    		} finally {
-						    			sam.closeHandle(aliasHandle);
-						    		}
-						    	}
+			    			UserHandle userHandle;
+				    		try {
+				    			userHandle = sam.openUser(domainHandle, i, 0x201DB);
+				    		} catch (RPCException e) {
+				    			if (e.getErrorCode() == SystemErrorCode.STATUS_ACCESS_DENIED) 
+				    				userHandle = sam.openUser(domainHandle, i, 0x20000);
+			    				else
+			    					throw e;
 				    		}
-				    		return rg;
-			    		} finally {
-			    			sam.closeHandle(userHandle);
+				    		try {
+				    			SID userSid = sid.resolveRelativeID(i);
+						    	List<RoleGrant> rg = new LinkedList<>();
+						    	for (MembershipWithName n2: domains) {
+						    		SID sid2 = sam.getSIDForDomain(serverHandle, n2.getName());
+						    		DomainHandle domainHandle2 = sam.openDomain(serverHandle, sid2);
+							    	for (MembershipWithName alias: sam.getAliasesForDomain(domainHandle2)) {
+							    		AliasHandle aliasHandle = sam.openAlias(domainHandle2, alias.getRelativeID());
+							    		try {
+								    		for (SID members: sam.getMembersInAlias(aliasHandle)) {
+								    			if (members.equals(userSid)) {
+								    				AliasGeneralInformation ai = sam.getAliasGeneralInformation(aliasHandle);
+								    				if (ai != null) {
+								    					RoleGrant g = new RoleGrant();
+								    					g.setOwnerAccountName(userAccount);
+								    					g.setOwnerSystem(getAgentName());
+								    					g.setRoleName(ai.getName());
+								    					g.setSystem(getAgentName());
+								    					rg.add(g);
+								    				}
+								    			}
+								    		}
+							    		} finally {
+							    			sam.closeHandle(aliasHandle);
+							    		}
+							    	}
+					    		}
+					    		return rg;
+				    		} finally {
+				    			sam.closeHandle(userHandle);
+				    		}
+			    		} catch (RPCException e) {
+			    			if (e.getErrorCode() == SystemErrorCode.STATUS_ACCESS_DENIED) {
+						    	return new LinkedList<>();
+			    			}
+			    			else
+			    				throw e;
 			    		}
 			    	}		    	
 			    }
