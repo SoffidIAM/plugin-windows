@@ -678,9 +678,15 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 			    	for (int i: r) {
 			    		if (isDebug())
 			    			log.info("Opening user "+userAccount+" at SAM domain "+n.getName());
-			    		UserHandle userHandle = sam.openUser(domainHandle, i, 0x000F07FF);
+			    		
+		    			UserHandle userHandle;
+		    			try {
+		    				userHandle = sam.openUser(domainHandle, i, 0x000f07ff); 
+		    			} catch (Exception e) {
+		    				throw new InternalErrorException("Unable to open user "+i, e);
+		    			}
 			    		try {
-			    			sam.setPassword(userHandle, password.getPassword(), mustchange);
+							sam.setPasswordEx(userHandle, password.getPassword(), mustchange);
 			    			found = true;
 			    		} finally {
 			    			sam.closeHandle(userHandle);
@@ -693,9 +699,9 @@ public class SimpleWindowsAgent extends Agent implements UserMgr, ReconcileMgr2,
 			if (!found)
 				throw new InternalErrorException("Unable to find account "+userAccount);
 		} catch (RPCException e) {
-			throw new InternalErrorException("Error getting accounts list", e);
+			throw new InternalErrorException("Error setting password", e);
 		} catch (IOException e) {
-			throw new InternalErrorException("Error getting accounts list", e);
+			throw new InternalErrorException("Error setting password", e);
 		}
 	}
 
