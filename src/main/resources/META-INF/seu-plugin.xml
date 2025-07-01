@@ -10,6 +10,7 @@
 		<javaClassV2>com.soffid.iam.sync.agent2.SSOActiveDirectoryAgent</javaClassV2>
 		<userInterface>ActiveDirectoryAgent.zul</userInterface>
 		<enableAccessControl>false</enableAccessControl>
+		<enableObjectTriggers>true</enableObjectTriggers>
 		<enableAttributeMapping>true</enableAttributeMapping>
 		<authoritativeSource>true</authoritativeSource>
 		<object systemObject="user" soffidObject="user">
