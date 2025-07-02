@@ -1516,11 +1516,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				entry = searchSamAccount(object, newAccountName, true);
 				if (entry != null) { //Undelete
 					if (debugEnabled)
-						log.info("Previously deleted object not found -> Undeleting it");
+						log.info("Previously deleted object found -> Undeleting it");
 					conn = getConnection(domain);
 					LDAPConstraints constraints = conn.getConstraints();
 					constraints.setControls( 
-							new LDAPControl [] {new LDAPControl ("1.2.840.113556.1.4.528", true, null)});
+							new LDAPControl [] {
+								new LDAPControl ("1.2.840.113556.1.4.417", true, null),
+								new LDAPControl ("1.2.840.113556.1.4.528", true, null)});
 					conn.modify(entry.getDN(), new LDAPModification[] {
 							new LDAPModification(LDAPModification.DELETE, new LDAPAttribute("isDeleted")),
 							new LDAPModification(LDAPModification.REPLACE, new LDAPAttribute("distinguishedName", dn)),
