@@ -5758,6 +5758,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	Map<String,KerberosSetup> krbMap = new HashMap<String, KerberosSetup>();
 
 	public String findPrincipalAccount(String principalName) throws InternalErrorException {
+		log.info("Searching account for "+principalName);
 		int i = principalName.lastIndexOf("@");
 		String account = principalName.substring(0, i);
 		String dns = principalName.substring(i+1).toLowerCase();
@@ -5771,17 +5772,26 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 //				log.info("Accepting dns name "+dns);
 			LDAPEntry entry = findPrincipalInDomain (mainDomain, principalName);
 			if (entry == null) {
+				log.info("Principal not found in main domain "+mainDomain);
 				LDAPPool pool = getPool(mainDomain);
 				for (LDAPPool childPool: pool.getChildPools()) {
 					entry = findPrincipalInDomain(pool.getBaseDN(), principalName);
 					if (entry != null)
 						break;
+					log.info("Principal not found in domain "+pool.getBaseDN());
+				}
+			}
+			if (entry == null) {
+				if ( dnsNameToDomain.get(dns) != null ) {
+					log.info("Finding account by name "+account);
+					entry = findSamAccount(account);
 				}
 			}
 			if (entry == null) {
 				if (debugEnabled)
 					log.info("Cannot find sAMAccountName "+account);
 			} else {
+				log.info("Fetching sAMAccountName from "+entry.getDN());
 				for ( ExtensibleObjectMapping mapping: objectMappings)
 				{
 					if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_ACCOUNT))
@@ -5805,6 +5815,9 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		
 		LDAPConnection conn = getConnection(domain);
 		try {
+			String shortName = domain.toLowerCase().replace(",dc=", ".").replace("dc=", "")
+					.toLowerCase();
+			log.info("searching Principal "+queryString+" in "+domain+" ("+shortName+")");
 			LDAPSearchConstraints constraints = new LDAPSearchConstraints(conn.getConstraints());
 			LDAPSearchResults query = conn.search(domain,
 					LDAPConnection.SCOPE_SUB, queryString, null, false,
@@ -5812,10 +5825,30 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			while (query.hasMore()) {
 				try {
 					LDAPEntry entry = query.next();
+					log.info("Found "+entry.getDN());
 					return entry;
 				} catch (LDAPReferralException ldapError) {
 					if (followReferrals)
 						throw ldapError;
+				}
+			}
+			if (account.toLowerCase().endsWith("@"+shortName.toLowerCase())) {
+				String leftSide = account.substring(0, account.lastIndexOf("@")+1);
+				queryString = "(&(objectClass=user)(userPrincipalName=" + 
+						escapeLDAPSearchFilter(leftSide)+"*))";
+				log.info("searching Principal "+queryString+" in "+domain);
+				query = conn.search(domain,
+						LDAPConnection.SCOPE_SUB, queryString, null, false,
+						constraints);
+				while (query.hasMore()) {
+					try {
+						LDAPEntry entry = query.next();
+						log.info("Found "+entry.getDN());
+						return entry;
+					} catch (LDAPReferralException ldapError) {
+						if (followReferrals)
+							throw ldapError;
+					}
 				}
 			}
 		} catch (LDAPException e) {
@@ -5825,6 +5858,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			returnConnection(domain);
 		}
 
+		
 		return null;
 	}
 
