@@ -458,8 +458,13 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 			if (entry == null)
 			{
 				log.warn("Unable to locate administrator account ("+loginDN+","+baseDN+") in LDAP server");
-				samDomainName = loginDN.substring(0, loginDN.indexOf("\\"));
-				samAccountName = loginDN.substring(loginDN.indexOf("\\")+1);
+				if (loginDN.contains("\\")) {
+					samDomainName = loginDN.substring(0, loginDN.indexOf("\\"));
+					samAccountName = loginDN.substring(loginDN.indexOf("\\")+1);
+				} else {					
+					samDomainName = ".";
+					samAccountName = loginDN;
+				}
 			}
 			else
 			{
