@@ -5767,29 +5767,34 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		int i = principalName.lastIndexOf("@");
 		String account = principalName.substring(0, i);
 		String dns = principalName.substring(i+1).toLowerCase();
-//		if ( !dnsNameToDomain.containsKey(dns)) {
-//			if (debugEnabled)
-//				log.info("Not accepting dns name "+dns);
-//			return null;
-//		}
+		if ( !dnsNameToDomain.containsKey(dns)) {
+			if (debugEnabled)
+				log.info("Not accepting dns name for "+principalName);
+			return null;
+		}
 		try {
 //			if (debugEnabled)
 //				log.info("Accepting dns name "+dns);
-			LDAPEntry entry = findPrincipalInDomain (mainDomain, principalName);
+			LDAPEntry entry = null;
+//			entry = findPrincipalInDomain (mainDomain, principalName);
+//			if (entry == null) {
+//				log.info("Principal not found in main domain "+mainDomain);
+//				LDAPPool pool = getPool(mainDomain);
+//				for (LDAPPool childPool: pool.getChildPools()) {
+//					entry = findPrincipalInDomain(pool.getBaseDN(), principalName);
+//					if (entry != null)
+//						break;
+//					log.info("Principal not found in domain "+pool.getBaseDN());
+//				}
+//			}
+			if (entry == null && !multiDomain) 
+				entry = findSamAccount(account);
 			if (entry == null) {
-				log.info("Principal not found in main domain "+mainDomain);
-				LDAPPool pool = getPool(mainDomain);
-				for (LDAPPool childPool: pool.getChildPools()) {
-					entry = findPrincipalInDomain(pool.getBaseDN(), principalName);
-					if (entry != null)
-						break;
-					log.info("Principal not found in domain "+pool.getBaseDN());
-				}
-			}
-			if (entry == null) {
-				if ( dnsNameToDomain.get(dns) != null ) {
-					log.info("Finding account by name "+account);
-					entry = findSamAccount(account);
+				String domain = dnsNameToDomain.get(dns);
+				if (domain != null) {
+					String ac = domain + "\\" + account;
+					log.info("Finding account by name "+ac);
+					entry = findSamAccount(ac);
 				}
 			}
 			if (entry == null) {
