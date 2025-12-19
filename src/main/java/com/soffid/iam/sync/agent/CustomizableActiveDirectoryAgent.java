@@ -5767,7 +5767,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		int i = principalName.lastIndexOf("@");
 		String account = principalName.substring(0, i);
 		String dns = principalName.substring(i+1).toLowerCase();
-		if ( !dnsNameToDomain.containsKey(dns)) {
+		if ( !dnsNameToDomain.containsKey(dns) || dns.equals(getCodi())) {
 			if (debugEnabled)
 				log.info("Not accepting dns name for "+principalName);
 			return null;
@@ -5791,11 +5791,10 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 				entry = findSamAccount(account);
 			if (entry == null) {
 				String domain = dnsNameToDomain.get(dns);
-				if (domain != null) {
-					String ac = domain + "\\" + account;
-					log.info("Finding account by name "+ac);
-					entry = findSamAccount(ac);
-				}
+				if (domain == null) domain = mainDomain;
+				String ac = domain + "\\" + account;
+				log.info("Finding account by name "+ac);
+				entry = findSamAccount(ac);
 			}
 			if (entry == null) {
 				if (debugEnabled)
