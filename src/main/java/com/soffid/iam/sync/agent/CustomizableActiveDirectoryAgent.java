@@ -5767,7 +5767,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 		int i = principalName.lastIndexOf("@");
 		String account = principalName.substring(0, i);
 		String dns = principalName.substring(i+1).toLowerCase();
-		if ( !dnsNameToDomain.containsKey(dns) || dns.equals(getCodi())) {
+		if ( !dnsNameToDomain.containsKey(dns) && ! dns.equals(getCodi())) {
 			if (debugEnabled)
 				log.info("Not accepting dns name for "+principalName);
 			return null;
