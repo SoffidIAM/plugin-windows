@@ -4183,7 +4183,7 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	public void updateUserPassword(String userName, Usuari userData,
 			Password password, boolean mustchange) throws RemoteException,
 			InternalErrorException {
-		if (validateUserPassword(userName, password)) {
+		if (validateUserPassword(userName, password) && !mustchange) {
 			if (debugEnabled)
 				log.info("Ignoring password change");
 			return;
@@ -5763,18 +5763,19 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 	Map<String,KerberosSetup> krbMap = new HashMap<String, KerberosSetup>();
 
 	public String findPrincipalAccount(String principalName) throws InternalErrorException {
-		log.info("Searching account for "+principalName);
+		if (debugEnabled)
+			log.info("Searching account for "+principalName);
 		int i = principalName.lastIndexOf("@");
 		String account = principalName.substring(0, i);
 		String dns = principalName.substring(i+1).toLowerCase();
-		if ( !dnsNameToDomain.containsKey(dns) && ! dns.equals(getCodi())) {
+		if ( !dnsNameToDomain.containsKey(dns) && ! dns.equalsIgnoreCase(getCodi())) {
 			if (debugEnabled)
 				log.info("Not accepting dns name for "+principalName);
 			return null;
 		}
 		try {
-//			if (debugEnabled)
-//				log.info("Accepting dns name "+dns);
+			if (debugEnabled)
+				log.info("Accepting dns name "+dns);
 			LDAPEntry entry = null;
 //			entry = findPrincipalInDomain (mainDomain, principalName);
 //			if (entry == null) {
@@ -5787,20 +5788,25 @@ public class CustomizableActiveDirectoryAgent extends WindowsNTBDCAgent
 //					log.info("Principal not found in domain "+pool.getBaseDN());
 //				}
 //			}
-			if (entry == null && !multiDomain) 
+			if (entry == null && !multiDomain)  {
+				if (debugEnabled)
+					log.info("Searching account "+account);
 				entry = findSamAccount(account);
+			}
 			if (entry == null) {
 				String domain = dnsNameToDomain.get(dns);
 				if (domain == null) domain = mainDomain;
 				String ac = domain + "\\" + account;
-				log.info("Finding account by name "+ac);
+				if (debugEnabled)
+					log.info("Finding account by name "+ac);
 				entry = findSamAccount(ac);
 			}
 			if (entry == null) {
 				if (debugEnabled)
 					log.info("Cannot find sAMAccountName "+account);
 			} else {
-				log.info("Fetching sAMAccountName from "+entry.getDN());
+				if (debugEnabled)
+					log.info("Fetching sAMAccountName from "+entry.getDN());
 				for ( ExtensibleObjectMapping mapping: objectMappings)
 				{
 					if (mapping.getSoffidObject().equals(SoffidObjectType.OBJECT_ACCOUNT))
